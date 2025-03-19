@@ -5,6 +5,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const testCaseInput = document.getElementById("testCase");
   const generateBtn = document.getElementById("generateBtn");
+  const saveBtn = document.getElementById("saveBtn");
   const loadingDiv = document.getElementById("loading");
   const errorDiv = document.getElementById("error");
   const outputDiv = document.getElementById("output");
@@ -12,6 +13,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (
     !testCaseInput ||
     !generateBtn ||
+    !saveBtn ||
     !loadingDiv ||
     !errorDiv ||
     !outputDiv
@@ -19,6 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
     console.error("Required DOM elements not found:", {
       testCaseInput: !!testCaseInput,
       generateBtn: !!generateBtn,
+      saveBtn: !!saveBtn,
       loadingDiv: !!loadingDiv,
       errorDiv: !!errorDiv,
       outputDiv: !!outputDiv,
@@ -27,6 +30,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   console.log("All DOM elements found successfully");
+
+  let currentScript = "";
 
   generateBtn.addEventListener("click", async () => {
     console.log("Generate button clicked");
@@ -99,13 +104,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Generate the script
       console.log("Generating script with AI...");
-      const script = await generateScriptWithAI(
+      currentScript = await generateScriptWithAI(
         testCase,
         pageDetails,
         elementsResponse.elements
       );
       console.log("Script generated successfully");
-      showOutput(script);
+      showOutput(currentScript);
+      saveBtn.disabled = false;
     } catch (error) {
       console.error("Error generating script:", error);
       showError(error.message);
@@ -114,10 +120,41 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  saveBtn.addEventListener("click", async () => {
+    if (!currentScript) {
+      showError("No script to save");
+      return;
+    }
+
+    try {
+      const testCase = testCaseInput.value.trim();
+      const filename = await generateFilename(testCase);
+
+      // Create a blob with the script content
+      const blob = new Blob([currentScript], { type: "text/javascript" });
+      const url = URL.createObjectURL(blob);
+
+      // Create a temporary link element
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+
+      // Append to body, click, and cleanup
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error saving script:", error);
+      showError("Failed to save script: " + error.message);
+    }
+  });
+
   function showLoading() {
     console.log("Showing loading state");
     loadingDiv.style.display = "block";
     generateBtn.disabled = true;
+    saveBtn.disabled = true;
   }
 
   function hideLoading() {
@@ -145,13 +182,15 @@ document.addEventListener("DOMContentLoaded", () => {
   function clearOutput() {
     console.log("Clearing output");
     outputDiv.textContent = "";
+    currentScript = "";
+    saveBtn.disabled = true;
   }
 });
 
 async function generateScriptWithAI(testCase, pageDetails, elements) {
   console.log("Generating script with AI...");
 
-  const prompt = `Generate a Playwright test script for the following test case. Return ONLY the script content within backticks, without any explanations or comments outside the script:
+  const prompt = `Generate a Playwright test script for the following test case. Return ONLY the script content, without any explanations, comments, or backticks:
 
 Test Case: ${testCase}
 
@@ -169,7 +208,7 @@ Generate a complete Playwright test script that:
 4. Is well-documented
 5. Uses async/await properly
 
-Return ONLY the script content within backticks, nothing else.`;
+Return ONLY the script content, nothing else.`;
 
   try {
     console.log("Making API request to Azure OpenAI...");
@@ -186,7 +225,7 @@ Return ONLY the script content within backticks, nothing else.`;
             {
               role: "system",
               content:
-                "You are a Playwright test automation expert. Generate clear, well-structured test scripts that follow best practices. Return ONLY the script content within backticks, without any explanations or comments outside the script.",
+                "You are a Playwright test automation expert. Generate clear, well-structured test scripts that follow best practices. Return ONLY the script content, without any explanations, comments, or backticks.",
             },
             {
               role: "user",
@@ -214,12 +253,64 @@ Return ONLY the script content within backticks, nothing else.`;
       throw new Error("Invalid response format from AI");
     }
 
-    // Extract only the content within backticks
+    // Clean up the response by removing any backticks and extra whitespace
     const content = data.choices[0].message.content;
-    const scriptMatch = content.match(/```javascript\n([\s\S]*?)```/);
-    return scriptMatch ? scriptMatch[1].trim() : content.trim();
+    return content.replace(/```javascript\n?|\n?```/g, "").trim();
   } catch (error) {
     console.error("Error in generateScriptWithAI:", error);
     throw error;
+  }
+}
+
+async function generateFilename(testCase) {
+  try {
+    const response = await fetch(
+      `https://${config.azure.endpoint}.openai.azure.com/openai/deployments/${config.azure.deployment}/chat/completions?api-version=${config.azure.apiVersion}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "api-key": config.azure.apiKey,
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a helpful assistant that generates appropriate filenames for Playwright test scripts. Return ONLY the filename with .js extension, nothing else. The filename should be kebab-case and descriptive of the test case.",
+            },
+            {
+              role: "user",
+              content: `Generate a filename for this test case: ${testCase}`,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 50,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`API request failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error("Invalid response format from AI");
+    }
+
+    let filename = data.choices[0].message.content.trim();
+    // Ensure the filename ends with .js
+    if (!filename.endsWith(".js")) {
+      filename += ".js";
+    }
+    // Clean up the filename to ensure it's valid
+    filename = filename.replace(/[^a-z0-9-_.]/gi, "-").toLowerCase();
+    return filename;
+  } catch (error) {
+    console.error("Error generating filename:", error);
+    // Fallback to a simple filename if AI generation fails
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    return `playwright-test-${timestamp}.js`;
   }
 }
