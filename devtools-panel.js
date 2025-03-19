@@ -151,7 +151,8 @@ document.addEventListener("DOMContentLoaded", () => {
 async function generateScriptWithAI(testCase, pageDetails, elements) {
   console.log("Generating script with AI...");
 
-  const prompt = `Generate a Playwright test script for the following test case:
+  const prompt = `Generate a Playwright test script for the following test case. Return ONLY the script content within backticks, without any explanations or comments outside the script:
+
 Test Case: ${testCase}
 
 Page Details:
@@ -168,7 +169,7 @@ Generate a complete Playwright test script that:
 4. Is well-documented
 5. Uses async/await properly
 
-The script should be ready to run with minimal modifications.`;
+Return ONLY the script content within backticks, nothing else.`;
 
   try {
     console.log("Making API request to Azure OpenAI...");
@@ -185,7 +186,7 @@ The script should be ready to run with minimal modifications.`;
             {
               role: "system",
               content:
-                "You are a Playwright test automation expert. Generate clear, well-structured test scripts that follow best practices.",
+                "You are a Playwright test automation expert. Generate clear, well-structured test scripts that follow best practices. Return ONLY the script content within backticks, without any explanations or comments outside the script.",
             },
             {
               role: "user",
@@ -213,7 +214,10 @@ The script should be ready to run with minimal modifications.`;
       throw new Error("Invalid response format from AI");
     }
 
-    return data.choices[0].message.content;
+    // Extract only the content within backticks
+    const content = data.choices[0].message.content;
+    const scriptMatch = content.match(/```javascript\n([\s\S]*?)```/);
+    return scriptMatch ? scriptMatch[1].trim() : content.trim();
   } catch (error) {
     console.error("Error in generateScriptWithAI:", error);
     throw error;
