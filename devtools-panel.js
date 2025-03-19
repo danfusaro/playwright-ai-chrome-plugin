@@ -173,7 +173,7 @@ The script should be ready to run with minimal modifications.`;
   try {
     console.log("Making API request to Azure OpenAI...");
     const response = await fetch(
-      `https://${config.azure.endpoint}.openai.azure.com/openai/deployments/${config.azure.deployment}/chat/completions?api-version=2023-05-15`,
+      `https://${config.azure.endpoint}.openai.azure.com/openai/deployments/${config.azure.deployment}/chat/completions?api-version=${config.azure.apiVersion}`,
       {
         method: "POST",
         headers: {
