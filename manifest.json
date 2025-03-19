@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Playwright AI Script Generator",
+  "version": "1.0",
+  "description": "Generate Playwright scripts using AI",
+  "permissions": ["scripting", "activeTab", "storage", "tabs"],
+  "host_permissions": ["<all_urls>", "*://*.openai.azure.com/*"],
+  "action": {
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "config.js",
+        "devtools-panel.html",
+        "devtools-panel.js",
+        "devtools.js",
+        "devtools.html"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.openai.azure.com/"
+  },
+  "devtools_page": "devtools.html"
+}
