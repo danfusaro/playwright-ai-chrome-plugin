@@ -586,7 +586,7 @@ document.addEventListener("DOMContentLoaded", () => {
 async function generateScriptWithAI(testCase, pageDetails, elements) {
   console.log("Generating script with AI...");
 
-  const prompt = `Generate a Playwright test script for the following test case. Return ONLY the script content, without any explanations, comments, or backticks:
+  const prompt = `Generate a Playwright test script in TypeScript for the following test case. Return ONLY the script content, without any explanations, comments, or backticks:
 
 Test Case: ${testCase}
 
@@ -597,12 +597,14 @@ Title: ${pageDetails.title}
 Visible Elements:
 ${JSON.stringify(elements, null, 2)}
 
-Generate a complete Playwright test script that:
+Generate a complete Playwright test script in TypeScript that:
 1. Uses proper selectors and assertions
 2. Includes error handling
 3. Follows best practices
 4. Is well-documented
 5. Uses async/await properly
+6. Includes proper TypeScript types
+7. Uses Playwright's built-in types
 
 Return ONLY the script content, nothing else.`;
 
@@ -621,7 +623,7 @@ Return ONLY the script content, nothing else.`;
             {
               role: "system",
               content:
-                "You are a Playwright test automation expert. Generate clear, well-structured test scripts that follow best practices. Return ONLY the script content, without any explanations, comments, or backticks.",
+                "You are a Playwright test automation expert specializing in TypeScript. Generate clear, well-structured test scripts that follow best practices and include proper TypeScript types. Return ONLY the script content, without any explanations, comments, or backticks.",
             },
             {
               role: "user",
@@ -651,7 +653,7 @@ Return ONLY the script content, nothing else.`;
 
     // Clean up the response by removing any backticks and extra whitespace
     const content = data.choices[0].message.content;
-    return content.replace(/```javascript\n?|\n?```/g, "").trim();
+    return content.replace(/```typescript\n?|\n?```/g, "").trim();
   } catch (error) {
     console.error("Error in generateScriptWithAI:", error);
     throw error;
@@ -673,7 +675,7 @@ async function generateFilename(testCase) {
             {
               role: "system",
               content:
-                "You are a helpful assistant that generates appropriate filenames for Playwright test scripts. Return ONLY the filename with .js extension, nothing else. The filename should be kebab-case and descriptive of the test case.",
+                "You are a helpful assistant that generates appropriate filenames for Playwright test scripts. Return ONLY the filename with .spec.ts extension, nothing else. The filename should be kebab-case and descriptive of the test case.",
             },
             {
               role: "user",
@@ -696,9 +698,9 @@ async function generateFilename(testCase) {
     }
 
     let filename = data.choices[0].message.content.trim();
-    // Ensure the filename ends with .js
-    if (!filename.endsWith(".js")) {
-      filename += ".js";
+    // Ensure the filename ends with .spec.ts
+    if (!filename.endsWith(".spec.ts")) {
+      filename = filename.replace(/\.(js|ts)?$/, "") + ".spec.ts";
     }
     // Clean up the filename to ensure it's valid
     filename = filename.replace(/[^a-z0-9-_.]/gi, "-").toLowerCase();
@@ -707,6 +709,6 @@ async function generateFilename(testCase) {
     console.error("Error generating filename:", error);
     // Fallback to a simple filename if AI generation fails
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    return `playwright-test-${timestamp}.js`;
+    return `playwright-test-${timestamp}.spec.ts`;
   }
 }
