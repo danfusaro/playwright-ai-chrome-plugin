@@ -259,12 +259,14 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="test-instructions">${test.instructions}</div>
         <div class="test-actions">
           <button class="copy-code-btn" data-index="${index}">Copy Code</button>
+          <button class="export-test-btn" data-index="${index}">Export</button>
           <button class="delete-test-btn" data-index="${index}">Delete</button>
         </div>
       `;
 
       // Add event listeners to the buttons and filename link
       const copyCodeBtn = testElement.querySelector(".copy-code-btn");
+      const exportTestBtn = testElement.querySelector(".export-test-btn");
       const deleteBtn = testElement.querySelector(".delete-test-btn");
       const filenameLink = testElement.querySelector(".test-filename-link");
 
@@ -294,6 +296,37 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch (err) {
           console.error("Failed to copy code:", err);
           showError("Failed to copy code to clipboard");
+        }
+      });
+
+      // Handle Export Test
+      exportTestBtn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          // Create a Blob with the test content and TypeScript MIME type
+          const blob = new Blob([test.body], {
+            type: "application/typescript",
+          });
+          const url = URL.createObjectURL(blob);
+
+          // Ensure the filename has .ts extension
+          const filename = test.filename.endsWith(".ts")
+            ? test.filename
+            : test.filename.replace(/\.[^.]+$/, "") + ".ts";
+
+          // Download the file
+          await chrome.downloads.download({
+            url: url,
+            filename: filename,
+            saveAs: true,
+          });
+
+          // Clean up the URL object
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          console.error("Failed to export test:", err);
+          showError("Failed to export test file");
         }
       });
 
@@ -675,7 +708,7 @@ async function generateFilename(testCase) {
             {
               role: "system",
               content:
-                "You are a helpful assistant that generates appropriate filenames for Playwright test scripts. Return ONLY the filename with .spec.ts extension, nothing else. The filename should be kebab-case and descriptive of the test case.",
+                "You are a helpful assistant that generates appropriate filenames for Playwright test scripts. Return ONLY the filename with .ts extension, nothing else. The filename should be kebab-case and descriptive of the test case.",
             },
             {
               role: "user",
@@ -698,10 +731,10 @@ async function generateFilename(testCase) {
     }
 
     let filename = data.choices[0].message.content.trim();
-    // Ensure the filename ends with .spec.ts
-    if (!filename.endsWith(".spec.ts")) {
-      filename = filename.replace(/\.(js|ts)?$/, "") + ".spec.ts";
-    }
+    // Remove any existing extension
+    filename = filename.replace(/\.[^.]+$/, "");
+    // Add .ts extension
+    filename = filename + ".ts";
     // Clean up the filename to ensure it's valid
     filename = filename.replace(/[^a-z0-9-_.]/gi, "-").toLowerCase();
     return filename;
@@ -709,6 +742,6 @@ async function generateFilename(testCase) {
     console.error("Error generating filename:", error);
     // Fallback to a simple filename if AI generation fails
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    return `playwright-test-${timestamp}.spec.ts`;
+    return `playwright-test-${timestamp}.ts`;
   }
 }
