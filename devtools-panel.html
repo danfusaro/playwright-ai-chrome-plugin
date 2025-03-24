@@ -143,6 +143,40 @@
         padding: 10px;
         border-radius: 4px;
       }
+      .suite-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
+      .suite-name-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .suite-name-label {
+        font-size: 18px;
+        color: #1a73e8;
+        font-weight: 500;
+      }
+      .suite-name-input {
+        width: 200px;
+        padding: 5px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        display: none;
+      }
+      .suite-name-input.editing {
+        display: block;
+      }
+      .suite-name-actions {
+        display: flex;
+        gap: 5px;
+      }
+      .suite-name-actions button {
+        padding: 2px 8px;
+        font-size: 12px;
+      }
     </style>
   </head>
   <body>
@@ -150,7 +184,23 @@
       <h1>Playwright Script Generator</h1>
 
       <div class="saved-tests">
-        <h2>Saved Tests</h2>
+        <div class="suite-header">
+          <div class="suite-name-container">
+            <span class="suite-name-label">Saved Tests</span>
+            <input
+              type="text"
+              id="suiteName"
+              value="Saved Tests"
+              class="suite-name-input"
+            />
+            <div class="suite-name-actions">
+              <button id="editSuiteNameBtn">Edit</button>
+              <button id="updateSuiteNameBtn" style="display: none">
+                Update
+              </button>
+            </div>
+          </div>
+        </div>
         <div class="saved-tests-list" id="savedTestsList"></div>
         <div class="button-group">
           <button id="newTestBtn">New Test</button>

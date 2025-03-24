@@ -9,6 +9,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const loadingDiv = document.getElementById("loading");
   const errorDiv = document.getElementById("error");
   const outputDiv = document.getElementById("output");
+  const suiteNameInput = document.getElementById("suiteName");
+  const suiteNameLabel = document.querySelector(".suite-name-label");
+  const editSuiteNameBtn = document.getElementById("editSuiteNameBtn");
+  const updateSuiteNameBtn = document.getElementById("updateSuiteNameBtn");
 
   if (
     !testCaseInput ||
@@ -16,7 +20,11 @@ document.addEventListener("DOMContentLoaded", () => {
     !saveBtn ||
     !loadingDiv ||
     !errorDiv ||
-    !outputDiv
+    !outputDiv ||
+    !suiteNameInput ||
+    !suiteNameLabel ||
+    !editSuiteNameBtn ||
+    !updateSuiteNameBtn
   ) {
     console.error("Required DOM elements not found:", {
       testCaseInput: !!testCaseInput,
@@ -25,6 +33,10 @@ document.addEventListener("DOMContentLoaded", () => {
       loadingDiv: !!loadingDiv,
       errorDiv: !!errorDiv,
       outputDiv: !!outputDiv,
+      suiteNameInput: !!suiteNameInput,
+      suiteNameLabel: !!suiteNameLabel,
+      editSuiteNameBtn: !!editSuiteNameBtn,
+      updateSuiteNameBtn: !!updateSuiteNameBtn,
     });
     return;
   }
@@ -36,17 +48,24 @@ document.addEventListener("DOMContentLoaded", () => {
   // Test storage and management
   let savedTests = [];
   let currentTest = null;
+  let suiteName = "Saved Tests";
 
   // DOM Elements
   const savedTestsList = document.getElementById("savedTestsList");
   const newTestBtn = document.getElementById("newTestBtn");
   const exportTestsBtn = document.getElementById("exportTestsBtn");
 
-  // Load saved tests from storage
+  // Load saved tests and suite name from storage
   async function loadSavedTests() {
     try {
-      const result = await chrome.storage.local.get("savedTests");
+      const result = await chrome.storage.local.get([
+        "savedTests",
+        "suiteName",
+      ]);
       savedTests = result.savedTests || [];
+      suiteName = result.suiteName || "Saved Tests";
+      suiteNameInput.value = suiteName;
+      suiteNameLabel.textContent = suiteName;
       renderSavedTests();
     } catch (err) {
       console.error("Error loading saved tests:", err);
@@ -56,14 +75,64 @@ document.addEventListener("DOMContentLoaded", () => {
   // Load saved tests immediately when the panel opens
   loadSavedTests();
 
-  // Save tests to storage
+  // Save tests and suite name to storage
   async function saveTestsToStorage() {
     try {
-      await chrome.storage.local.set({ savedTests });
+      await chrome.storage.local.set({
+        savedTests,
+        suiteName: suiteNameInput.value,
+      });
     } catch (err) {
       console.error("Error saving tests:", err);
     }
   }
+
+  // Handle suite name editing
+  editSuiteNameBtn.addEventListener("click", () => {
+    suiteNameInput.classList.add("editing");
+    suiteNameLabel.style.display = "none";
+    editSuiteNameBtn.style.display = "none";
+    updateSuiteNameBtn.style.display = "block";
+    suiteNameInput.focus();
+  });
+
+  updateSuiteNameBtn.addEventListener("click", async () => {
+    const newName = suiteNameInput.value.trim();
+    if (newName) {
+      suiteNameLabel.textContent = newName;
+      suiteNameLabel.style.display = "block";
+      suiteNameInput.classList.remove("editing");
+      editSuiteNameBtn.style.display = "block";
+      updateSuiteNameBtn.style.display = "none";
+      await saveTestsToStorage();
+    }
+  });
+
+  // Handle Enter key in suite name input
+  suiteNameInput.addEventListener("keypress", async (e) => {
+    if (e.key === "Enter") {
+      const newName = suiteNameInput.value.trim();
+      if (newName) {
+        suiteNameLabel.textContent = newName;
+        suiteNameLabel.style.display = "block";
+        suiteNameInput.classList.remove("editing");
+        editSuiteNameBtn.style.display = "block";
+        updateSuiteNameBtn.style.display = "none";
+        await saveTestsToStorage();
+      }
+    }
+  });
+
+  // Handle Escape key in suite name input
+  suiteNameInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      suiteNameInput.value = suiteNameLabel.textContent;
+      suiteNameLabel.style.display = "block";
+      suiteNameInput.classList.remove("editing");
+      editSuiteNameBtn.style.display = "block";
+      updateSuiteNameBtn.style.display = "none";
+    }
+  });
 
   // Render the list of saved tests
   function renderSavedTests() {
@@ -147,6 +216,7 @@ document.addEventListener("DOMContentLoaded", () => {
             timestamp: test.timestamp,
           },
         })),
+        suiteName: suiteNameInput.value,
       });
 
       if (!response.success) {
@@ -279,29 +349,50 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  saveBtn.addEventListener("click", () => {
-    if (!currentTest) {
-      // Create new test
-      const newTest = {
-        instructions: testCaseInput.value,
-        body: outputDiv.textContent,
-        filename: `test_${Date.now()}.spec.js`,
-      };
-      savedTests.unshift(newTest);
-    } else {
-      // Update existing test
-      currentTest.instructions = testCaseInput.value;
-      currentTest.body = outputDiv.textContent;
+  saveBtn.addEventListener("click", async () => {
+    try {
+      // Get the current tab's URL
+      const tabs = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (!tabs || !tabs[0]) {
+        throw new Error("Could not find active tab");
+      }
+      const currentUrl = tabs[0].url;
+
+      if (!currentTest) {
+        // Generate a contextual filename for the new test
+        const filename = await generateFilename(testCaseInput.value);
+
+        // Create new test
+        const newTest = {
+          instructions: testCaseInput.value,
+          body: outputDiv.textContent,
+          filename: filename,
+          description: testCaseInput.value,
+          url: currentUrl,
+          timestamp: new Date().toISOString(),
+        };
+        savedTests.unshift(newTest);
+      } else {
+        // Update existing test
+        currentTest.instructions = testCaseInput.value;
+        currentTest.body = outputDiv.textContent;
+      }
+
+      saveTestsToStorage();
+      renderSavedTests();
+
+      // Clear the input and output after saving
+      testCaseInput.value = "";
+      outputDiv.textContent = "";
+      currentTest = null;
+      saveBtn.textContent = "Save Test";
+    } catch (error) {
+      console.error("Error saving test:", error);
+      showError(`Failed to save test: ${error.message}`);
     }
-
-    saveTestsToStorage();
-    renderSavedTests();
-
-    // Clear the input and output after saving
-    testCaseInput.value = "";
-    outputDiv.textContent = "";
-    saveBtn.disabled = true;
-    currentTest = null;
   });
 
   // Add event listener for the New Test button

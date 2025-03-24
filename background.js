@@ -58,7 +58,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "exportTests") {
-    handleExportTests(message.tests)
+    handleExportTests(message.tests, message.suiteName)
       .then((result) => sendResponse(result))
       .catch((error) => sendResponse({ success: false, error: error.message }));
     return true; // Will respond asynchronously
@@ -66,7 +66,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // Handle test export
-async function handleExportTests(tests) {
+async function handleExportTests(tests, suiteName) {
   try {
     // Create a new zip file
     const zip = new JSZip();
@@ -98,7 +98,7 @@ async function handleExportTests(tests) {
 
     // Download the zip file with timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const filename = `playwright-tests-${timestamp}.zip`;
+    const filename = `${suiteName}-${timestamp}.zip`;
 
     await chrome.downloads.download({
       url: base64Data,
