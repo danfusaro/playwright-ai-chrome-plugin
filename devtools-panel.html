@@ -83,76 +83,30 @@
         border-radius: 4px;
         padding: 15px;
       }
-      .saved-tests h2 {
-        margin-top: 0;
-        font-size: 18px;
-        color: #1a73e8;
-      }
-      .saved-tests-list {
-        max-height: 300px;
-        overflow-y: auto;
-        margin-bottom: 15px;
-      }
-      .saved-test-item {
-        padding: 10px;
+      .test-suite {
+        margin-bottom: 20px;
         border: 1px solid #e0e0e0;
         border-radius: 4px;
-        margin-bottom: 10px;
-        cursor: pointer;
+        padding: 15px;
       }
-      .saved-test-item:hover {
-        background-color: #f8f9fa;
+      .test-suite:last-child {
+        margin-bottom: 0;
       }
-      .saved-test-item.selected {
-        background-color: #e8f0fe;
-        border-color: #1a73e8;
-      }
-      .test-actions {
-        display: flex;
-        gap: 10px;
-        margin-top: 10px;
-      }
-      .test-actions button {
-        padding: 5px 10px;
-        font-size: 12px;
-      }
-      .test-details {
-        display: none;
-        margin-top: 10px;
-        padding: 10px;
-        background-color: #f8f9fa;
-        border-radius: 4px;
-      }
-      .test-details.show {
-        display: block;
-      }
-      .test-instructions {
-        font-style: italic;
-        color: #666;
-        margin-bottom: 10px;
-      }
-      .test-filename {
-        color: #1a73e8;
-        font-weight: bold;
-        margin-bottom: 10px;
-      }
-      .test-body {
-        white-space: pre-wrap;
-        font-family: monospace;
-        background-color: #f1f3f4;
-        padding: 10px;
-        border-radius: 4px;
-      }
-      .suite-header {
+      .test-suite-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         margin-bottom: 10px;
+        cursor: pointer;
+      }
+      .test-suite-header:hover {
+        background-color: #f8f9fa;
       }
       .suite-name-container {
         display: flex;
         align-items: center;
         gap: 10px;
+        flex: 1;
       }
       .suite-name-label {
         font-size: 18px;
@@ -177,36 +131,136 @@
         padding: 2px 8px;
         font-size: 12px;
       }
+      .suite-actions {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 15px;
+      }
+      .suite-actions button {
+        padding: 5px 10px;
+        font-size: 12px;
+      }
+      .test-suites-list {
+        margin-bottom: 20px;
+      }
+      .test-suites-list:empty {
+        display: none;
+      }
+      .test-suites-list:empty + .new-suite-button {
+        margin-bottom: 0;
+      }
+      .new-suite-button {
+        margin-bottom: 20px;
+      }
+      .saved-tests h2 {
+        margin-top: 0;
+        font-size: 18px;
+        color: #1a73e8;
+      }
+      .saved-tests-list {
+        max-height: 300px;
+        overflow-y: auto;
+        margin-bottom: 15px;
+        transition: max-height 0.3s ease-out;
+      }
+      .test-suite.collapsed .saved-tests-list {
+        max-height: 0;
+        overflow: hidden;
+        margin-bottom: 0;
+      }
+      .test-suite.collapsed .suite-actions {
+        display: none;
+      }
+      .collapse-icon {
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #666;
+        transition: transform 0.3s ease;
+      }
+      .test-suite.collapsed .collapse-icon {
+        transform: rotate(-90deg);
+      }
+      .saved-test-item {
+        padding: 10px;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        margin-bottom: 10px;
+        cursor: pointer;
+      }
+      .saved-test-item:hover {
+        background-color: #f8f9fa;
+      }
+      .saved-test-item.selected {
+        background-color: #e8f0fe;
+        border-color: #1a73e8;
+      }
+      .test-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .test-actions button {
+        padding: 4px 8px;
+        font-size: 12px;
+        cursor: pointer;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        color: #495057;
+      }
+      .test-actions button:hover {
+        background-color: #e9ecef;
+      }
+      .test-actions button.copy-code-btn {
+        background-color: #e3f2fd;
+        border-color: #90caf9;
+        color: #1976d2;
+      }
+      .test-actions button.copy-code-btn:hover {
+        background-color: #bbdefb;
+      }
+      .test-actions button.copy-code-btn:active {
+        background-color: #90caf9;
+      }
+      .test-instructions {
+        font-style: italic;
+        color: #666;
+        margin-bottom: 10px;
+      }
+      .test-filename {
+        color: #1a73e8;
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+      .test-filename-link {
+        color: #1a73e8;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .test-filename-link:hover {
+        text-decoration: underline;
+      }
+      .test-body {
+        white-space: pre-wrap;
+        font-family: monospace;
+        background-color: #f1f3f4;
+        padding: 10px;
+        border-radius: 4px;
+      }
+      #testGenerator {
+        display: none;
+      }
     </style>
   </head>
   <body>
     <div class="container">
       <h1>Playwright Script Generator</h1>
 
-      <div class="saved-tests">
-        <div class="suite-header">
-          <div class="suite-name-container">
-            <span class="suite-name-label">Saved Tests</span>
-            <input
-              type="text"
-              id="suiteName"
-              value="Saved Tests"
-              class="suite-name-input"
-            />
-            <div class="suite-name-actions">
-              <button id="editSuiteNameBtn">Edit</button>
-              <button id="updateSuiteNameBtn" style="display: none">
-                Update
-              </button>
-            </div>
-          </div>
-        </div>
-        <div class="saved-tests-list" id="savedTestsList"></div>
-        <div class="button-group">
-          <button id="newTestBtn">New Test</button>
-          <button id="exportTestsBtn">Export Tests</button>
-        </div>
-      </div>
+      <div class="test-suites-list" id="testSuitesList"></div>
+      <button id="newSuiteBtn" class="new-suite-button">New Test Suite</button>
 
       <div id="testGenerator">
         <textarea

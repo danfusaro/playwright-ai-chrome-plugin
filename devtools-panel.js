@@ -9,10 +9,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const loadingDiv = document.getElementById("loading");
   const errorDiv = document.getElementById("error");
   const outputDiv = document.getElementById("output");
-  const suiteNameInput = document.getElementById("suiteName");
-  const suiteNameLabel = document.querySelector(".suite-name-label");
-  const editSuiteNameBtn = document.getElementById("editSuiteNameBtn");
-  const updateSuiteNameBtn = document.getElementById("updateSuiteNameBtn");
+  const testSuitesList = document.getElementById("testSuitesList");
+  const newSuiteBtn = document.getElementById("newSuiteBtn");
+  const testGenerator = document.getElementById("testGenerator");
 
   if (
     !testCaseInput ||
@@ -21,10 +20,9 @@ document.addEventListener("DOMContentLoaded", () => {
     !loadingDiv ||
     !errorDiv ||
     !outputDiv ||
-    !suiteNameInput ||
-    !suiteNameLabel ||
-    !editSuiteNameBtn ||
-    !updateSuiteNameBtn
+    !testSuitesList ||
+    !newSuiteBtn ||
+    !testGenerator
   ) {
     console.error("Required DOM elements not found:", {
       testCaseInput: !!testCaseInput,
@@ -33,10 +31,9 @@ document.addEventListener("DOMContentLoaded", () => {
       loadingDiv: !!loadingDiv,
       errorDiv: !!errorDiv,
       outputDiv: !!outputDiv,
-      suiteNameInput: !!suiteNameInput,
-      suiteNameLabel: !!suiteNameLabel,
-      editSuiteNameBtn: !!editSuiteNameBtn,
-      updateSuiteNameBtn: !!updateSuiteNameBtn,
+      testSuitesList: !!testSuitesList,
+      newSuiteBtn: !!newSuiteBtn,
+      testGenerator: !!testGenerator,
     });
     return;
   }
@@ -44,128 +41,279 @@ document.addEventListener("DOMContentLoaded", () => {
   console.log("All DOM elements found successfully");
 
   let currentScript = "";
-
-  // Test storage and management
-  let savedTests = [];
+  let testSuites = [];
   let currentTest = null;
-  let suiteName = "Saved Tests";
+  let currentSuite = null;
 
-  // DOM Elements
-  const savedTestsList = document.getElementById("savedTestsList");
-  const newTestBtn = document.getElementById("newTestBtn");
-  const exportTestsBtn = document.getElementById("exportTestsBtn");
+  // Show/hide test generator based on suite selection
+  function updateTestGeneratorVisibility() {
+    testGenerator.style.display = currentSuite ? "block" : "none";
+  }
 
-  // Load saved tests and suite name from storage
-  async function loadSavedTests() {
+  // Load test suites from storage
+  async function loadTestSuites() {
     try {
-      const result = await chrome.storage.local.get([
-        "savedTests",
-        "suiteName",
-      ]);
-      savedTests = result.savedTests || [];
-      suiteName = result.suiteName || "Saved Tests";
-      suiteNameInput.value = suiteName;
-      suiteNameLabel.textContent = suiteName;
-      renderSavedTests();
+      const result = await chrome.storage.local.get("testSuites");
+      testSuites = result.testSuites || [];
+      renderTestSuites();
     } catch (err) {
-      console.error("Error loading saved tests:", err);
+      console.error("Error loading test suites:", err);
     }
   }
 
-  // Load saved tests immediately when the panel opens
-  loadSavedTests();
+  // Load test suites immediately when the panel opens
+  loadTestSuites();
 
-  // Save tests and suite name to storage
-  async function saveTestsToStorage() {
+  // Save test suites to storage
+  async function saveTestSuitesToStorage() {
     try {
-      await chrome.storage.local.set({
-        savedTests,
-        suiteName: suiteNameInput.value,
-      });
+      await chrome.storage.local.set({ testSuites });
     } catch (err) {
-      console.error("Error saving tests:", err);
+      console.error("Error saving test suites:", err);
     }
   }
 
-  // Handle suite name editing
-  editSuiteNameBtn.addEventListener("click", () => {
-    suiteNameInput.classList.add("editing");
-    suiteNameLabel.style.display = "none";
-    editSuiteNameBtn.style.display = "none";
-    updateSuiteNameBtn.style.display = "block";
-    suiteNameInput.focus();
-  });
+  // Create a new test suite
+  function createTestSuite() {
+    const newSuite = {
+      id: Date.now().toString(),
+      name: "New Test Suite",
+      tests: [],
+      isCollapsed: false,
+    };
+    testSuites.push(newSuite);
+    saveTestSuitesToStorage();
+    renderTestSuites();
+  }
 
-  updateSuiteNameBtn.addEventListener("click", async () => {
-    const newName = suiteNameInput.value.trim();
-    if (newName) {
-      suiteNameLabel.textContent = newName;
-      suiteNameLabel.style.display = "block";
-      suiteNameInput.classList.remove("editing");
-      editSuiteNameBtn.style.display = "block";
-      updateSuiteNameBtn.style.display = "none";
-      await saveTestsToStorage();
-    }
-  });
+  // Toggle suite collapse state
+  function toggleSuiteCollapse(suite) {
+    suite.isCollapsed = !suite.isCollapsed;
+    saveTestSuitesToStorage();
+    renderTestSuites();
+  }
 
-  // Handle Enter key in suite name input
-  suiteNameInput.addEventListener("keypress", async (e) => {
-    if (e.key === "Enter") {
-      const newName = suiteNameInput.value.trim();
-      if (newName) {
-        suiteNameLabel.textContent = newName;
-        suiteNameLabel.style.display = "block";
-        suiteNameInput.classList.remove("editing");
-        editSuiteNameBtn.style.display = "block";
-        updateSuiteNameBtn.style.display = "none";
-        await saveTestsToStorage();
+  // Delete a test suite
+  function deleteTestSuite(suiteId) {
+    if (
+      confirm(
+        "Are you sure you want to delete this test suite and all its tests?"
+      )
+    ) {
+      testSuites = testSuites.filter((suite) => suite.id !== suiteId);
+      if (currentSuite && currentSuite.id === suiteId) {
+        currentSuite = null;
+        currentTest = null;
+        testCaseInput.value = "";
+        outputDiv.textContent = "";
+        saveBtn.disabled = true;
+        // Hide the test generator when suite is deleted
+        updateTestGeneratorVisibility();
       }
+      saveTestSuitesToStorage();
+      renderTestSuites();
     }
-  });
+  }
 
-  // Handle Escape key in suite name input
-  suiteNameInput.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      suiteNameInput.value = suiteNameLabel.textContent;
-      suiteNameLabel.style.display = "block";
-      suiteNameInput.classList.remove("editing");
-      editSuiteNameBtn.style.display = "block";
-      updateSuiteNameBtn.style.display = "none";
-    }
-  });
-
-  // Render the list of saved tests
-  function renderSavedTests() {
-    savedTestsList.innerHTML = "";
-    savedTests.slice(0, 10).forEach((test, index) => {
-      const testElement = document.createElement("div");
-      testElement.className = "saved-test-item";
-      testElement.innerHTML = `
-        <div class="test-filename">${test.filename}</div>
-        <div class="test-instructions">${test.instructions}</div>
-        <div class="test-actions">
-          <button class="select-test-btn" data-index="${index}">Select</button>
-          <button class="delete-test-btn" data-index="${index}">Delete</button>
+  // Render all test suites
+  function renderTestSuites() {
+    testSuitesList.innerHTML = "";
+    testSuites.forEach((suite) => {
+      const suiteElement = document.createElement("div");
+      suiteElement.className = `test-suite ${
+        suite.isCollapsed ? "collapsed" : ""
+      }`;
+      suiteElement.innerHTML = `
+        <div class="test-suite-header">
+          <div class="suite-name-container">
+            <span class="collapse-icon">▼</span>
+            <span class="suite-name-label">${suite.name}</span>
+            <input type="text" class="suite-name-input" value="${suite.name}" />
+            <div class="suite-name-actions">
+              <button class="edit-suite-name-btn">Edit</button>
+              <button class="update-suite-name-btn" style="display: none">Update</button>
+            </div>
+          </div>
         </div>
-        <div class="test-details" id="testDetails${index}">
-          <div class="test-body">${test.body}</div>
+        <div class="saved-tests-list" id="savedTestsList${suite.id}"></div>
+        <div class="suite-actions">
+          <button class="new-test-btn" data-suite-id="${suite.id}">New Test</button>
+          <button class="export-tests-btn" data-suite-id="${suite.id}">Export Tests</button>
+          <button class="delete-suite-btn" data-suite-id="${suite.id}">Delete Suite</button>
         </div>
       `;
 
-      // Add event listeners to the buttons
-      const selectBtn = testElement.querySelector(".select-test-btn");
-      const deleteBtn = testElement.querySelector(".delete-test-btn");
+      // Add click handler for the entire header to toggle collapse
+      const header = suiteElement.querySelector(".test-suite-header");
+      header.addEventListener("click", (e) => {
+        // Don't toggle if clicking on buttons or input
+        if (e.target.tagName === "BUTTON" || e.target.tagName === "INPUT") {
+          return;
+        }
+        toggleSuiteCollapse(suite);
+      });
 
-      selectBtn.addEventListener("click", () => selectTest(index));
-      deleteBtn.addEventListener("click", () => deleteTest(index));
+      // Add event listeners for suite name editing
+      const suiteNameInput = suiteElement.querySelector(".suite-name-input");
+      const editSuiteNameBtn = suiteElement.querySelector(
+        ".edit-suite-name-btn"
+      );
+      const updateSuiteNameBtn = suiteElement.querySelector(
+        ".update-suite-name-btn"
+      );
+      const suiteNameLabel = suiteElement.querySelector(".suite-name-label");
 
-      savedTestsList.appendChild(testElement);
+      editSuiteNameBtn.addEventListener("click", (e) => {
+        e.stopPropagation(); // Prevent header click from firing
+        suiteNameInput.classList.add("editing");
+        suiteNameLabel.style.display = "none";
+        editSuiteNameBtn.style.display = "none";
+        updateSuiteNameBtn.style.display = "block";
+        suiteNameInput.focus();
+      });
+
+      updateSuiteNameBtn.addEventListener("click", async (e) => {
+        e.stopPropagation(); // Prevent header click from firing
+        const newName = suiteNameInput.value.trim();
+        if (newName) {
+          suite.name = newName;
+          suiteNameLabel.textContent = newName;
+          suiteNameLabel.style.display = "block";
+          suiteNameInput.classList.remove("editing");
+          editSuiteNameBtn.style.display = "block";
+          updateSuiteNameBtn.style.display = "none";
+          await saveTestSuitesToStorage();
+        }
+      });
+
+      // Handle Enter key in suite name input
+      suiteNameInput.addEventListener("keypress", async (e) => {
+        e.stopPropagation(); // Prevent header click from firing
+        if (e.key === "Enter") {
+          const newName = suiteNameInput.value.trim();
+          if (newName) {
+            suite.name = newName;
+            suiteNameLabel.textContent = newName;
+            suiteNameLabel.style.display = "block";
+            suiteNameInput.classList.remove("editing");
+            editSuiteNameBtn.style.display = "block";
+            updateSuiteNameBtn.style.display = "none";
+            await saveTestSuitesToStorage();
+          }
+        }
+      });
+
+      // Handle Escape key in suite name input
+      suiteNameInput.addEventListener("keydown", (e) => {
+        e.stopPropagation(); // Prevent header click from firing
+        if (e.key === "Escape") {
+          suiteNameInput.value = suiteNameLabel.textContent;
+          suiteNameLabel.style.display = "block";
+          suiteNameInput.classList.remove("editing");
+          editSuiteNameBtn.style.display = "block";
+          updateSuiteNameBtn.style.display = "none";
+        }
+      });
+
+      // Add event listeners for suite actions
+      const newTestBtn = suiteElement.querySelector(".new-test-btn");
+      const exportTestsBtn = suiteElement.querySelector(".export-tests-btn");
+      const deleteSuiteBtn = suiteElement.querySelector(".delete-suite-btn");
+
+      newTestBtn.addEventListener("click", (e) => {
+        e.stopPropagation(); // Prevent header click from firing
+        currentSuite = suite;
+        createNewTest();
+      });
+
+      exportTestsBtn.addEventListener("click", (e) => {
+        e.stopPropagation(); // Prevent header click from firing
+        exportTests(suite);
+      });
+
+      deleteSuiteBtn.addEventListener("click", (e) => {
+        e.stopPropagation(); // Prevent header click from firing
+        deleteTestSuite(suite.id);
+      });
+
+      // Render tests for this suite
+      const savedTestsList = suiteElement.querySelector(
+        `#savedTestsList${suite.id}`
+      );
+      renderSavedTests(suite, savedTestsList);
+
+      testSuitesList.appendChild(suiteElement);
     });
   }
 
-  // Make functions globally accessible for onclick handlers
-  function selectTest(index) {
-    const test = savedTests[index];
+  // Render the list of saved tests for a specific suite
+  function renderSavedTests(suite, container) {
+    container.innerHTML = "";
+    suite.tests.slice(0, 10).forEach((test, index) => {
+      const testElement = document.createElement("div");
+      testElement.className = "saved-test-item";
+      testElement.innerHTML = `
+        <div class="test-filename">
+          <a href="#" class="test-filename-link">${test.filename}</a>
+        </div>
+        <div class="test-instructions">${test.instructions}</div>
+        <div class="test-actions">
+          <button class="copy-code-btn" data-index="${index}">Copy Code</button>
+          <button class="delete-test-btn" data-index="${index}">Delete</button>
+        </div>
+      `;
+
+      // Add event listeners to the buttons and filename link
+      const copyCodeBtn = testElement.querySelector(".copy-code-btn");
+      const deleteBtn = testElement.querySelector(".delete-test-btn");
+      const filenameLink = testElement.querySelector(".test-filename-link");
+
+      // Handle Copy Code
+      copyCodeBtn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          // Create a temporary textarea element
+          const textarea = document.createElement("textarea");
+          textarea.value = test.body;
+          document.body.appendChild(textarea);
+
+          // Select and copy the text
+          textarea.select();
+          document.execCommand("copy");
+
+          // Remove the temporary textarea
+          document.body.removeChild(textarea);
+
+          // Show feedback
+          const originalText = copyCodeBtn.textContent;
+          copyCodeBtn.textContent = "Copied!";
+          setTimeout(() => {
+            copyCodeBtn.textContent = originalText;
+          }, 2000);
+        } catch (err) {
+          console.error("Failed to copy code:", err);
+          showError("Failed to copy code to clipboard");
+        }
+      });
+
+      // Handle filename click for test selection
+      filenameLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        selectTest(suite, index);
+      });
+
+      deleteBtn.addEventListener("click", () => deleteTest(suite, index));
+
+      container.appendChild(testElement);
+    });
+  }
+
+  // Select a test
+  function selectTest(suite, index) {
+    const test = suite.tests[index];
+    currentSuite = suite;
     currentTest = test;
 
     // Load the test data into the view
@@ -175,39 +323,71 @@ document.addEventListener("DOMContentLoaded", () => {
     // Enable the save button for updates
     saveBtn.disabled = false;
 
-    // Show test details
-    const detailsElement = document.getElementById(`testDetails${index}`);
-    if (detailsElement) {
-      detailsElement.classList.toggle("show");
-    }
-
-    // Update selected state
-    document.querySelectorAll(".saved-test-item").forEach((item, i) => {
-      item.classList.toggle("selected", i === index);
+    // Update selected state - use suite ID to ensure correct selection
+    document.querySelectorAll(".saved-test-item").forEach((item) => {
+      item.classList.remove("selected");
     });
 
-    // Scroll the selected test into view
-    const selectedItem = document.querySelector(".saved-test-item.selected");
-    if (selectedItem) {
-      selectedItem.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // Find the selected item using the test details ID
+    const detailsElement = document.getElementById(
+      `testDetails${suite.id}_${index}`
+    );
+    if (detailsElement) {
+      const selectedItem = detailsElement.closest(".saved-test-item");
+      if (selectedItem) {
+        selectedItem.classList.add("selected");
+        selectedItem.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
     }
+
+    // Show the test generator
+    updateTestGeneratorVisibility();
   }
 
-  function deleteTest(index) {
+  // Delete a test
+  function deleteTest(suite, index) {
     if (confirm("Are you sure you want to delete this test?")) {
-      savedTests.splice(index, 1);
-      saveTestsToStorage();
-      renderSavedTests();
+      suite.tests.splice(index, 1);
+      if (currentTest && currentSuite && currentSuite.id === suite.id) {
+        currentTest = null;
+        testCaseInput.value = "";
+        outputDiv.textContent = "";
+        saveBtn.disabled = true;
+      }
+      saveTestSuitesToStorage();
+      renderTestSuites();
     }
   }
 
-  // Export all tests
-  async function exportTests() {
+  // Create a new test
+  function createNewTest() {
+    // Clear the current view
+    testCaseInput.value = "";
+    outputDiv.textContent = "";
+    saveBtn.disabled = true;
+    currentTest = null;
+
+    // Deselect any selected item in the list
+    document.querySelectorAll(".saved-test-item").forEach((item) => {
+      item.classList.remove("selected");
+    });
+
+    // Hide any open test details
+    document.querySelectorAll(".test-details").forEach((details) => {
+      details.classList.remove("show");
+    });
+
+    // Show the test generator
+    updateTestGeneratorVisibility();
+  }
+
+  // Export tests for a specific suite
+  async function exportTests(suite) {
     try {
       // Send message to background script to handle export
       const response = await chrome.runtime.sendMessage({
         type: "exportTests",
-        tests: savedTests.map((test) => ({
+        tests: suite.tests.map((test) => ({
           name: test.filename.replace(".js", ""),
           code: test.body,
           metadata: {
@@ -216,7 +396,7 @@ document.addEventListener("DOMContentLoaded", () => {
             timestamp: test.timestamp,
           },
         })),
-        suiteName: suiteNameInput.value,
+        suiteName: suite.name,
       });
 
       if (!response.success) {
@@ -230,18 +410,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Listen for messages from the background script
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === "exportTestsToDevTools") {
-      // Handle the export request
-      exportTests()
-        .then(() => sendResponse({ success: true }))
-        .catch((error) =>
-          sendResponse({ success: false, error: error.message })
-        );
-      return true; // Keep the message channel open for async response
-    }
-  });
+  // Add event listener for the New Suite button
+  newSuiteBtn.addEventListener("click", createTestSuite);
 
   generateBtn.addEventListener("click", async () => {
     console.log("Generate button clicked");
@@ -330,25 +500,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Create a new test
-  function createNewTest() {
-    // Clear the current view
-    testCaseInput.value = "";
-    outputDiv.textContent = "";
-    saveBtn.disabled = true;
-    currentTest = null;
-
-    // Deselect any selected item in the list
-    document.querySelectorAll(".saved-test-item").forEach((item) => {
-      item.classList.remove("selected");
-    });
-
-    // Hide any open test details
-    document.querySelectorAll(".test-details").forEach((details) => {
-      details.classList.remove("show");
-    });
-  }
-
   saveBtn.addEventListener("click", async () => {
     try {
       // Get the current tab's URL
@@ -374,15 +525,15 @@ document.addEventListener("DOMContentLoaded", () => {
           url: currentUrl,
           timestamp: new Date().toISOString(),
         };
-        savedTests.unshift(newTest);
+        currentSuite.tests.unshift(newTest);
       } else {
         // Update existing test
         currentTest.instructions = testCaseInput.value;
         currentTest.body = outputDiv.textContent;
       }
 
-      saveTestsToStorage();
-      renderSavedTests();
+      saveTestSuitesToStorage();
+      renderTestSuites();
 
       // Clear the input and output after saving
       testCaseInput.value = "";
@@ -394,11 +545,6 @@ document.addEventListener("DOMContentLoaded", () => {
       showError(`Failed to save test: ${error.message}`);
     }
   });
-
-  // Add event listener for the New Test button
-  newTestBtn.addEventListener("click", createNewTest);
-
-  exportTestsBtn.addEventListener("click", exportTests);
 
   function showLoading() {
     console.log("Showing loading state");
