@@ -33,6 +33,146 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let currentScript = "";
 
+  // Test storage and management
+  let savedTests = [];
+  let currentTest = null;
+
+  // DOM Elements
+  const savedTestsList = document.getElementById("savedTestsList");
+  const newTestBtn = document.getElementById("newTestBtn");
+  const exportTestsBtn = document.getElementById("exportTestsBtn");
+
+  // Load saved tests from storage
+  async function loadSavedTests() {
+    try {
+      const result = await chrome.storage.local.get("savedTests");
+      savedTests = result.savedTests || [];
+      renderSavedTests();
+    } catch (err) {
+      console.error("Error loading saved tests:", err);
+    }
+  }
+
+  // Load saved tests immediately when the panel opens
+  loadSavedTests();
+
+  // Save tests to storage
+  async function saveTestsToStorage() {
+    try {
+      await chrome.storage.local.set({ savedTests });
+    } catch (err) {
+      console.error("Error saving tests:", err);
+    }
+  }
+
+  // Render the list of saved tests
+  function renderSavedTests() {
+    savedTestsList.innerHTML = "";
+    savedTests.slice(0, 10).forEach((test, index) => {
+      const testElement = document.createElement("div");
+      testElement.className = "saved-test-item";
+      testElement.innerHTML = `
+        <div class="test-filename">${test.filename}</div>
+        <div class="test-instructions">${test.instructions}</div>
+        <div class="test-actions">
+          <button class="select-test-btn" data-index="${index}">Select</button>
+          <button class="delete-test-btn" data-index="${index}">Delete</button>
+        </div>
+        <div class="test-details" id="testDetails${index}">
+          <div class="test-body">${test.body}</div>
+        </div>
+      `;
+
+      // Add event listeners to the buttons
+      const selectBtn = testElement.querySelector(".select-test-btn");
+      const deleteBtn = testElement.querySelector(".delete-test-btn");
+
+      selectBtn.addEventListener("click", () => selectTest(index));
+      deleteBtn.addEventListener("click", () => deleteTest(index));
+
+      savedTestsList.appendChild(testElement);
+    });
+  }
+
+  // Make functions globally accessible for onclick handlers
+  function selectTest(index) {
+    const test = savedTests[index];
+    currentTest = test;
+
+    // Load the test data into the view
+    testCaseInput.value = test.instructions;
+    outputDiv.textContent = test.body;
+
+    // Enable the save button for updates
+    saveBtn.disabled = false;
+
+    // Show test details
+    const detailsElement = document.getElementById(`testDetails${index}`);
+    if (detailsElement) {
+      detailsElement.classList.toggle("show");
+    }
+
+    // Update selected state
+    document.querySelectorAll(".saved-test-item").forEach((item, i) => {
+      item.classList.toggle("selected", i === index);
+    });
+
+    // Scroll the selected test into view
+    const selectedItem = document.querySelector(".saved-test-item.selected");
+    if (selectedItem) {
+      selectedItem.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }
+
+  function deleteTest(index) {
+    if (confirm("Are you sure you want to delete this test?")) {
+      savedTests.splice(index, 1);
+      saveTestsToStorage();
+      renderSavedTests();
+    }
+  }
+
+  // Export all tests
+  async function exportTests() {
+    try {
+      // Send message to background script to handle export
+      const response = await chrome.runtime.sendMessage({
+        type: "exportTests",
+        tests: savedTests.map((test) => ({
+          name: test.filename.replace(".js", ""),
+          code: test.body,
+          metadata: {
+            description: test.description,
+            url: test.url,
+            timestamp: test.timestamp,
+          },
+        })),
+      });
+
+      if (!response.success) {
+        throw new Error(response.error || "Failed to export tests");
+      }
+
+      showOutput(response.message);
+    } catch (error) {
+      console.error("Error exporting tests:", error);
+      showError(`Failed to export tests: ${error.message}`);
+    }
+  }
+
+  // Listen for messages from the background script
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === "exportTestsToDevTools") {
+      // Handle the export request
+      exportTests()
+        .then(() => sendResponse({ success: true }))
+        .catch((error) =>
+          sendResponse({ success: false, error: error.message })
+        );
+      return true; // Keep the message channel open for async response
+    }
+  });
+
   generateBtn.addEventListener("click", async () => {
     console.log("Generate button clicked");
     const testCase = testCaseInput.value.trim();
@@ -120,35 +260,54 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  saveBtn.addEventListener("click", async () => {
-    if (!currentScript) {
-      showError("No script to save");
-      return;
+  // Create a new test
+  function createNewTest() {
+    // Clear the current view
+    testCaseInput.value = "";
+    outputDiv.textContent = "";
+    saveBtn.disabled = true;
+    currentTest = null;
+
+    // Deselect any selected item in the list
+    document.querySelectorAll(".saved-test-item").forEach((item) => {
+      item.classList.remove("selected");
+    });
+
+    // Hide any open test details
+    document.querySelectorAll(".test-details").forEach((details) => {
+      details.classList.remove("show");
+    });
+  }
+
+  saveBtn.addEventListener("click", () => {
+    if (!currentTest) {
+      // Create new test
+      const newTest = {
+        instructions: testCaseInput.value,
+        body: outputDiv.textContent,
+        filename: `test_${Date.now()}.spec.js`,
+      };
+      savedTests.unshift(newTest);
+    } else {
+      // Update existing test
+      currentTest.instructions = testCaseInput.value;
+      currentTest.body = outputDiv.textContent;
     }
 
-    try {
-      const testCase = testCaseInput.value.trim();
-      const filename = await generateFilename(testCase);
+    saveTestsToStorage();
+    renderSavedTests();
 
-      // Create a blob with the script content
-      const blob = new Blob([currentScript], { type: "text/javascript" });
-      const url = URL.createObjectURL(blob);
-
-      // Create a temporary link element
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-
-      // Append to body, click, and cleanup
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Error saving script:", error);
-      showError("Failed to save script: " + error.message);
-    }
+    // Clear the input and output after saving
+    testCaseInput.value = "";
+    outputDiv.textContent = "";
+    saveBtn.disabled = true;
+    currentTest = null;
   });
+
+  // Add event listener for the New Test button
+  newTestBtn.addEventListener("click", createNewTest);
+
+  exportTestsBtn.addEventListener("click", exportTests);
 
   function showLoading() {
     console.log("Showing loading state");

@@ -77,22 +77,100 @@
           Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         font-size: 14px;
       }
+      .saved-tests {
+        margin-bottom: 30px;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 15px;
+      }
+      .saved-tests h2 {
+        margin-top: 0;
+        font-size: 18px;
+        color: #1a73e8;
+      }
+      .saved-tests-list {
+        max-height: 300px;
+        overflow-y: auto;
+        margin-bottom: 15px;
+      }
+      .saved-test-item {
+        padding: 10px;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        margin-bottom: 10px;
+        cursor: pointer;
+      }
+      .saved-test-item:hover {
+        background-color: #f8f9fa;
+      }
+      .saved-test-item.selected {
+        background-color: #e8f0fe;
+        border-color: #1a73e8;
+      }
+      .test-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .test-actions button {
+        padding: 5px 10px;
+        font-size: 12px;
+      }
+      .test-details {
+        display: none;
+        margin-top: 10px;
+        padding: 10px;
+        background-color: #f8f9fa;
+        border-radius: 4px;
+      }
+      .test-details.show {
+        display: block;
+      }
+      .test-instructions {
+        font-style: italic;
+        color: #666;
+        margin-bottom: 10px;
+      }
+      .test-filename {
+        color: #1a73e8;
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+      .test-body {
+        white-space: pre-wrap;
+        font-family: monospace;
+        background-color: #f1f3f4;
+        padding: 10px;
+        border-radius: 4px;
+      }
     </style>
   </head>
   <body>
     <div class="container">
       <h1>Playwright Script Generator</h1>
-      <textarea
-        id="testCase"
-        placeholder="Enter your test case here..."
-      ></textarea>
-      <div class="button-group">
-        <button id="generateBtn">Generate Script</button>
-        <button id="saveBtn" disabled>Save to File</button>
+
+      <div class="saved-tests">
+        <h2>Saved Tests</h2>
+        <div class="saved-tests-list" id="savedTestsList"></div>
+        <div class="button-group">
+          <button id="newTestBtn">New Test</button>
+          <button id="exportTestsBtn">Export Tests</button>
+        </div>
       </div>
-      <div id="loading">Generating script...</div>
-      <div id="error"></div>
-      <div id="output"></div>
+
+      <div id="testGenerator">
+        <textarea
+          id="testCase"
+          placeholder="Enter your test case here..."
+        ></textarea>
+        <div class="button-group">
+          <button id="generateBtn">Generate Script</button>
+          <button id="saveBtn" disabled>Save Test</button>
+        </div>
+        <div id="loading">Generating script...</div>
+        <div id="error"></div>
+        <div id="output"></div>
+      </div>
     </div>
     <script type="module" src="devtools-panel.js"></script>
   </body>

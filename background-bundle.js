@@ -1,5 +1,7 @@
-importScripts(chrome.runtime.getURL("lib/jszip.min.js"));
+// JSZip library code will be here
+// ... existing code ...
 
+// Our background script code
 // Listen for extension installation
 chrome.runtime.onInstalled.addListener(() => {
   console.log("Playwright Script Generator extension installed.");
@@ -68,43 +70,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Handle test export
 async function handleExportTests(tests) {
   try {
-    // Create a new zip file
+    // Create a zip file containing all tests
     const zip = new JSZip();
 
-    // Add each test to the zip file
+    // Add each test to the zip
     tests.forEach((test) => {
-      // Create a directory for each test
-      const testDir = zip.folder(test.name);
-
-      // Add the test file
-      testDir.file("test.js", test.code);
-
-      // Add metadata if available
-      if (test.metadata) {
-        testDir.file("metadata.json", JSON.stringify(test.metadata, null, 2));
-      }
+      zip.file(test.filename, test.body);
     });
 
-    // Generate the zip file as a blob
-    const content = await zip.generateAsync({ type: "blob" });
+    // Generate the zip file
+    const zipContent = await zip.generateAsync({ type: "blob" });
 
-    // Convert blob to base64
-    const reader = new FileReader();
-    const base64Data = await new Promise((resolve, reject) => {
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(content);
-    });
+    // Create a URL for the zip file
+    const url = URL.createObjectURL(zipContent);
 
-    // Download the zip file with timestamp
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const filename = `playwright-tests-${timestamp}.zip`;
-
+    // Download the zip file
     await chrome.downloads.download({
-      url: base64Data,
-      filename: filename,
+      url: url,
+      filename: "playwright-tests.zip",
       saveAs: true,
     });
+
+    // Clean up the URL
+    URL.revokeObjectURL(url);
 
     return {
       success: true,
