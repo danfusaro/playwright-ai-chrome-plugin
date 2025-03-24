@@ -20,8 +20,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
 
       case "getFullHTML":
+        const htmlContent = document.documentElement.innerHTML;
         sendResponse({
-          html: document.documentElement.outerHTML,
+          html: htmlContent,
         });
         break;
 
@@ -34,31 +35,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           })
           .map((el) => ({
             tag: el.tagName.toLowerCase(),
-            id: el.id,
-            classes: Array.from(el.classList),
-            text: el.textContent.trim().slice(0, 100), // First 100 chars
-            isVisible: true,
+            id: el.id || undefined,
+            classes: el.classList.length ? Array.from(el.classList) : undefined,
+            text: el.textContent.trim().slice(0, 50),
           }));
         console.log("Found visible elements:", elements.length);
-        const response = { elements: elements };
-        console.log("Sending response:", response);
-        sendResponse(response);
+        sendResponse({ elements });
         break;
 
       case "getScripts":
-        const scripts = Array.from(document.scripts).map((script) => ({
-          src: script.src,
-          type: script.type,
-          content: script.textContent,
-        }));
+        const scripts = Array.from(document.scripts)
+          .filter((script) => script.src || script.textContent.trim())
+          .map((script) => ({
+            src: script.src || undefined,
+            type: script.type || undefined,
+            content: script.textContent.trim().slice(0, 200) || undefined,
+          }));
         sendResponse({ scripts });
         break;
 
       case "getStyles":
-        const styles = Array.from(document.styleSheets).map((sheet) => ({
-          href: sheet.href,
-          rules: Array.from(sheet.cssRules || []).map((rule) => rule.cssText),
-        }));
+        const styles = Array.from(document.styleSheets)
+          .filter((sheet) => sheet.href || sheet.cssRules?.length)
+          .map((sheet) => ({
+            href: sheet.href || undefined,
+            rules: sheet.cssRules
+              ? Array.from(sheet.cssRules)
+                  .map((rule) => rule.cssText.slice(0, 200))
+                  .filter((rule) => rule.length > 0)
+              : undefined,
+          }));
         sendResponse({ styles });
         break;
 
