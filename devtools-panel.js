@@ -916,26 +916,53 @@ Visible Elements:
 ${JSON.stringify(elements, null, 2)}
 
 Generate a complete Playwright test script in TypeScript that:
-1. Uses ONLY valid Playwright selector syntax:
-   - Use page.locator('selector', { hasText: 'text' }) for text matching
-   - Use page.locator('selector', { has: page.locator('nested-selector') }) for nested elements
-   - Use page.locator('selector').first() or .last() for multiple matches
-   - Use page.locator('selector').nth(index) for specific index
-   - Use page.locator('selector').filter({ hasText: 'text' }) for filtering
-   - NEVER use :text() or :has-text() pseudo-selectors
-   - NEVER use deprecated selector syntax
-2. Uses proper selectors and assertions
-3. Includes error handling
-4. Follows best practices
-5. Is well-documented
-6. Uses async/await properly
-7. Includes proper TypeScript types
-8. Uses Playwright's built-in types
+1. Uses ONLY selectors that are physically present in the provided HTML elements:
+   - ONLY use selectors that match elements in the provided Visible Elements list
+   - DO NOT make up or hallucinate selectors that don't exist
+   - If an element doesn't have a unique identifier, use the most specific selector available from the provided HTML
+2. Uses ONLY modern Playwright selector syntax:
+   - VALID: page.locator('button', { hasText: 'Click me' })
+   - VALID: page.locator('input[type="text"]', { has: page.locator('label', { hasText: 'Username' }) })
+   - VALID: page.locator('button').filter({ hasText: 'Submit' })
+   - VALID: page.locator('a').first()
+   - VALID: page.locator('div').nth(1)
+   - INVALID: page.locator('button:text("Click me")')
+   - INVALID: page.locator('button:has-text("Click me")')
+   - INVALID: page.locator('button >> text=Click me')
+   - INVALID: page.locator('button:has(span)')
+3. Uses proper selectors and assertions
+4. Includes error handling
+5. Follows best practices
+6. Is well-documented
+7. Uses async/await properly
+8. Includes proper TypeScript types
+9. Uses Playwright's built-in types
+10. NEVER include { page } in test function declarations:
+    - INCORRECT: test('should do something', async ({ page }) => { ... })
+    - CORRECT: test('should do something', async () => { ... })
+
+Example of correct function declaration:
+test('should do something', async () => {
+  // test code here
+});
 
 Example of valid selector syntax:
-const button = page.locator('button', { hasText: 'Click me' });
-const input = page.locator('input[type="text"]', { has: page.locator('label', { hasText: 'Username' }) });
+// Using HTML attributes
+const submitButton = page.locator('button[type="submit"]');
+const searchInput = page.locator('input[name="search"]');
+const form = page.locator('form[data-testid="search-form"]');
+
+// Using text content
+const button = page.locator('button', { hasText: 'Submit' });
 const link = page.locator('a').filter({ hasText: 'Learn more' });
+
+// Using nested elements
+const input = page.locator('input[type="text"]', { has: page.locator('label', { hasText: 'Username' }) });
+
+// Using multiple matches
+const firstButton = page.locator('button').first();
+const lastButton = page.locator('button').last();
+const secondButton = page.locator('button').nth(1);
 
 Return ONLY the script content, nothing else.`;
 
@@ -954,15 +981,49 @@ Return ONLY the script content, nothing else.`;
             {
               role: "system",
               content: `You are a Playwright test automation expert specializing in TypeScript. Generate clear, well-structured test scripts that:
-1. Use ONLY valid Playwright selector syntax
-2. Follow best practices for element selection
-3. Include proper TypeScript types
-4. Return ONLY the script content, without any explanations, comments, or backticks
+1. Use ONLY selectors that are physically present in the provided HTML elements:
+   - ONLY use selectors that match elements in the provided Visible Elements list
+   - DO NOT make up or hallucinate selectors that don't exist
+   - If an element doesn't have a unique identifier, use the most specific selector available from the provided HTML
+2. Use ONLY modern Playwright selector syntax:
+   - VALID: page.locator('button', { hasText: 'Click me' })
+   - VALID: page.locator('input[type="text"]', { has: page.locator('label', { hasText: 'Username' }) })
+   - VALID: page.locator('button').filter({ hasText: 'Submit' })
+   - VALID: page.locator('a').first()
+   - VALID: page.locator('div').nth(1)
+   - INVALID: page.locator('button:text("Click me")')
+   - INVALID: page.locator('button:has-text("Click me")')
+   - INVALID: page.locator('button >> text=Click me')
+   - INVALID: page.locator('button:has(span)')
+3. Follow best practices for element selection
+4. Include proper TypeScript types
+5. Return ONLY the script content, without any explanations, comments, or backticks
+6. NEVER include { page } in test function declarations:
+   - INCORRECT: test('should do something', async ({ page }) => { ... })
+   - CORRECT: test('should do something', async () => { ... })
+
+Example of correct function declaration:
+test('should do something', async () => {
+  // test code here
+});
 
 Example of valid selector syntax:
-const button = page.locator('button', { hasText: 'Click me' });
+// Using HTML attributes
+const submitButton = page.locator('button[type="submit"]');
+const searchInput = page.locator('input[name="search"]');
+const form = page.locator('form[data-testid="search-form"]');
+
+// Using text content
+const button = page.locator('button', { hasText: 'Submit' });
+const link = page.locator('a').filter({ hasText: 'Learn more' });
+
+// Using nested elements
 const input = page.locator('input[type="text"]', { has: page.locator('label', { hasText: 'Username' }) });
-const link = page.locator('a').filter({ hasText: 'Learn more' });`,
+
+// Using multiple matches
+const firstButton = page.locator('button').first();
+const lastButton = page.locator('button').last();
+const secondButton = page.locator('button').nth(1);`,
             },
             {
               role: "user",
@@ -991,10 +1052,53 @@ const link = page.locator('a').filter({ hasText: 'Learn more' });`,
     }
 
     // Clean up the response by removing any backticks and extra whitespace
-    const content = data.choices[0].message.content;
-    return content.replace(/```typescript\n?|\n?```/g, "").trim();
+    let content = data.choices[0].message.content;
+    content = content.replace(/```typescript\n?|\n?```/g, "").trim();
+
+    // Validate and fix any invalid selectors
+    content = content.replace(
+      /page\.locator\(['"]([^'"]*):text\(['"]([^'"]*)['"]\)['"]\)/g,
+      "page.locator('$1', { hasText: '$2' })"
+    );
+    content = content.replace(
+      /page\.locator\(['"]([^'"]*):has-text\(['"]([^'"]*)['"]\)['"]\)/g,
+      "page.locator('$1', { hasText: '$2' })"
+    );
+    content = content.replace(
+      /page\.locator\(['"]([^'"]*) >> text=([^'"]*)['"]\)/g,
+      "page.locator('$1', { hasText: $2 })"
+    );
+    content = content.replace(
+      /page\.locator\(['"]([^'"]*):has\(([^)]*)\)['"]\)/g,
+      "page.locator('$1', { has: page.locator($2) })"
+    );
+
+    return content;
   } catch (error) {
     console.error("Error in generateScriptWithAI:", error);
+
+    // Check if the error is due to extension context invalidation
+    if (error.message.includes("Extension context invalidated")) {
+      // Try to reload the panel
+      try {
+        // Attempt to reload the current panel
+        const tabs = await chrome.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        if (tabs && tabs[0]) {
+          await chrome.tabs.reload(tabs[0].id);
+        }
+      } catch (reloadErr) {
+        console.error("Failed to reload panel:", reloadErr);
+      }
+
+      // Show a user-friendly error message
+      throw new Error(
+        "The extension needs to be reloaded. Please close and reopen the DevTools panel."
+      );
+    }
+
     throw error;
   }
 }
