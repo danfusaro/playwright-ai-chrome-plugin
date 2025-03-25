@@ -44,6 +44,65 @@ document.addEventListener("DOMContentLoaded", () => {
   let testSuites = [];
   let currentTest = null;
   let currentSuite = null;
+  let configModal = null;
+  let currentConfigSuite = null;
+
+  // Initialize configuration modal
+  function initializeConfigModal() {
+    configModal = document.getElementById("configModal");
+    const closeBtn = configModal.querySelector(".modal-close");
+    const cancelBtn = configModal.querySelector(".cancel-btn");
+    const saveBtn = configModal.querySelector(".save-btn");
+
+    closeBtn.addEventListener("click", closeConfigModal);
+    cancelBtn.addEventListener("click", closeConfigModal);
+    saveBtn.addEventListener("click", saveConfig);
+
+    // Close modal when clicking outside
+    configModal.addEventListener("click", (e) => {
+      if (e.target === configModal) {
+        closeConfigModal();
+      }
+    });
+  }
+
+  // Show configuration modal
+  function showConfigModal(suite) {
+    currentConfigSuite = suite;
+    const beforeAllHook = document.getElementById("beforeAllHook");
+    const afterAllHook = document.getElementById("afterAllHook");
+    const imports = document.getElementById("imports");
+
+    // Load existing configuration
+    beforeAllHook.value = suite.beforeAllHook || "";
+    afterAllHook.value = suite.afterAllHook || "";
+    imports.value = suite.imports || "";
+
+    configModal.style.display = "block";
+  }
+
+  // Close configuration modal
+  function closeConfigModal() {
+    configModal.style.display = "none";
+    currentConfigSuite = null;
+  }
+
+  // Save configuration
+  async function saveConfig() {
+    if (!currentConfigSuite) return;
+
+    const beforeAllHook = document.getElementById("beforeAllHook").value;
+    const afterAllHook = document.getElementById("afterAllHook").value;
+    const imports = document.getElementById("imports").value;
+
+    currentConfigSuite.beforeAllHook = beforeAllHook;
+    currentConfigSuite.afterAllHook = afterAllHook;
+    currentConfigSuite.imports = imports;
+
+    await saveTestSuitesToStorage();
+    closeConfigModal();
+    renderTestSuites();
+  }
 
   // Show/hide test generator based on suite selection
   function updateTestGeneratorVisibility() {
@@ -70,6 +129,45 @@ document.addEventListener("DOMContentLoaded", () => {
       await chrome.storage.local.set({ testSuites });
     } catch (err) {
       console.error("Error saving test suites:", err);
+
+      // Check if the error is due to extension context invalidation
+      if (err.message.includes("Extension context invalidated")) {
+        // Try to reload the panel
+        try {
+          // Attempt to reload the current panel
+          const tabs = await chrome.tabs.query({
+            active: true,
+            currentWindow: true,
+          });
+          if (tabs && tabs[0]) {
+            await chrome.tabs.reload(tabs[0].id);
+          }
+        } catch (reloadErr) {
+          console.error("Failed to reload panel:", reloadErr);
+        }
+
+        // Show a user-friendly error message
+        showError(
+          "The extension needs to be reloaded. Please close and reopen the DevTools panel."
+        );
+
+        // Clear the current state
+        testSuites = [];
+        currentSuite = null;
+        currentTest = null;
+        testCaseInput.value = "";
+        outputDiv.textContent = "";
+        saveBtn.disabled = true;
+
+        // Hide the test generator
+        updateTestGeneratorVisibility();
+
+        // Re-render the empty state
+        renderTestSuites();
+      } else {
+        // For other errors, show a generic error message
+        showError("Failed to save test suites. Please try again.");
+      }
     }
   }
 
@@ -80,6 +178,9 @@ document.addEventListener("DOMContentLoaded", () => {
       name: "New Test Suite",
       tests: [],
       isCollapsed: false,
+      beforeAllHook: "",
+      afterAllHook: "",
+      imports: "",
     };
     testSuites.push(newSuite);
     saveTestSuitesToStorage();
@@ -138,7 +239,8 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="saved-tests-list" id="savedTestsList${suite.id}"></div>
         <div class="suite-actions">
           <button class="new-test-btn" data-suite-id="${suite.id}">New Test</button>
-          <button class="export-tests-btn" data-suite-id="${suite.id}">Export Tests</button>
+          <button class="configure-suite-btn" data-suite-id="${suite.id}">Configure</button>
+          <button class="export-tests-btn" data-suite-id="${suite.id}">Export Test Suite</button>
           <button class="delete-suite-btn" data-suite-id="${suite.id}">Delete Suite</button>
         </div>
       `;
@@ -219,6 +321,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const newTestBtn = suiteElement.querySelector(".new-test-btn");
       const exportTestsBtn = suiteElement.querySelector(".export-tests-btn");
       const deleteSuiteBtn = suiteElement.querySelector(".delete-suite-btn");
+      const configureBtn = suiteElement.querySelector(".configure-suite-btn");
 
       newTestBtn.addEventListener("click", (e) => {
         e.stopPropagation(); // Prevent header click from firing
@@ -226,14 +329,34 @@ document.addEventListener("DOMContentLoaded", () => {
         createNewTest();
       });
 
-      exportTestsBtn.addEventListener("click", (e) => {
+      exportTestsBtn.addEventListener("click", async (e) => {
         e.stopPropagation(); // Prevent header click from firing
-        exportTests(suite);
+        try {
+          // Set busy state
+          exportTestsBtn.disabled = true;
+          const originalText = exportTestsBtn.textContent;
+          exportTestsBtn.textContent = "Exporting...";
+
+          await exportTests(suite);
+        } catch (error) {
+          console.error("Error exporting tests:", error);
+          showError(`Failed to export tests: ${error.message}`);
+        } finally {
+          // Reset button state
+          exportTestsBtn.disabled = false;
+          exportTestsBtn.textContent = "Export Test Suite";
+        }
       });
 
       deleteSuiteBtn.addEventListener("click", (e) => {
         e.stopPropagation(); // Prevent header click from firing
         deleteTestSuite(suite.id);
+      });
+
+      // Add event listener for configure button
+      configureBtn.addEventListener("click", (e) => {
+        e.stopPropagation(); // Prevent header click from firing
+        showConfigModal(suite);
       });
 
       // Render tests for this suite
@@ -417,29 +540,185 @@ document.addEventListener("DOMContentLoaded", () => {
   // Export tests for a specific suite
   async function exportTests(suite) {
     try {
-      // Send message to background script to handle export
-      const response = await chrome.runtime.sendMessage({
-        type: "exportTests",
-        tests: suite.tests.map((test) => ({
-          name: test.filename.replace(".js", ""),
-          code: test.body,
-          metadata: {
-            description: test.description,
-            url: test.url,
-            timestamp: test.timestamp,
-          },
-        })),
-        suiteName: suite.name,
+      // Generate the test suite content
+      const suiteContent = await generateTestSuite(suite);
+
+      // Create a Blob with the test content and TypeScript MIME type
+      const blob = new Blob([suiteContent], { type: "application/typescript" });
+      const url = URL.createObjectURL(blob);
+
+      // Generate filename for the suite
+      const suiteFilename = `${suite.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")}.spec.ts`;
+
+      // Download the file
+      await chrome.downloads.download({
+        url: url,
+        filename: suiteFilename,
+        saveAs: true,
       });
 
-      if (!response.success) {
-        throw new Error(response.error || "Failed to export tests");
-      }
+      // Clean up the URL object
+      URL.revokeObjectURL(url);
 
-      showOutput(response.message);
+      showOutput(`Exported test suite "${suite.name}" successfully`);
     } catch (error) {
       console.error("Error exporting tests:", error);
       showError(`Failed to export tests: ${error.message}`);
+    }
+  }
+
+  // Generate test suite content
+  async function generateTestSuite(suite) {
+    try {
+      // First, collect all unique imports from child test cases
+      const childImports = new Set();
+      suite.tests.forEach((test) => {
+        const imports =
+          test.body.match(/^import[\s\S]*?from[\s\S]*?;?\n/gm) || [];
+        imports.forEach((imp) => childImports.add(imp.trim()));
+      });
+
+      // Get user-defined imports and split into lines
+      const userImports = (suite.imports || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("//"));
+
+      // Combine all imports
+      const allImports = [
+        "import { expect, test } from '@playwright/test';",
+        ...userImports,
+        ...childImports,
+      ].filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
+
+      const response = await fetch(
+        `https://${config.azure.endpoint}.openai.azure.com/openai/deployments/${config.azure.deployment}/chat/completions?api-version=${config.azure.apiVersion}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "api-key": config.azure.apiKey,
+          },
+          body: JSON.stringify({
+            messages: [
+              {
+                role: "system",
+                content: `You are a Playwright test automation expert. Create a test suite file that follows this exact template:
+
+${allImports.join("\n")}
+
+test.describe('Description of test suite', () => {
+    // Common vars
+    let context;
+    let page;
+    // Before/after declaration
+    test.beforeAll(/** User defined function HERE */);
+    test.afterAll(/** User defined function HERE */);
+    // Test cases
+    test(...);
+});
+
+Requirements:
+1. Follow the template structure exactly
+2. Include proper line breaks and indentation
+3. Convert ALL provided test cases into proper test blocks
+4. Use proper Playwright selectors and assertions
+5. Follow best practices for test organization
+6. MUST include every test case provided in the input
+7. Each test case should be a separate test block
+8. Maintain the original test logic while organizing it properly
+9. Format the code with proper spacing and indentation
+10. DO NOT include any imports in the response - they will be added automatically
+11. Use relative URLs for navigation - do not include protocol, host, or port
+12. Each test should navigate to its specific relative URL before running
+
+Return ONLY the test suite content, nothing else.`,
+              },
+              {
+                role: "user",
+                content: `Create a test suite file for the following tests:
+
+Suite Name: ${suite.name}
+
+Before All Hook:
+${suite.beforeAllHook || "// No beforeAll hook configured"}
+
+After All Hook:
+${suite.afterAllHook || "// No afterAll hook configured"}
+
+Tests:
+${suite.tests
+  .map(
+    (test, index) => `${index + 1}. ${test.instructions}
+URL: ${test.url}`
+  )
+  .join("\n\n")}
+
+Test Bodies:
+${suite.tests
+  .map((test, index) => `\nTest ${index + 1}:\n${test.body}`)
+  .join("\n")}
+
+IMPORTANT: Include ALL test cases in the output, converting each one into a proper test block.`,
+              },
+            ],
+            temperature: 0.7,
+            max_tokens: 2000,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error("Invalid response format from AI");
+      }
+
+      // Clean up the response
+      let content = data.choices[0].message.content.trim();
+
+      // Remove any backticks and their content, but preserve the actual code
+      content = content.replace(/```typescript\n?|\n?```/g, "");
+
+      // Remove any existing imports at the start of the file
+      content = content.replace(/^import[\s\S]*?from[\s\S]*?;?\n/gm, "");
+
+      // Remove any require statements at the start of the file
+      content = content.replace(/^require[\s\S]*?;?\n/gm, "");
+
+      // Remove any eslint comments at the start of the file
+      content = content.replace(/^\/\*[\s\S]*?\*\/\n/gm, "");
+
+      // Remove any empty lines at the start
+      content = content.replace(/^\s+/, "");
+
+      // Remove any language identifiers or unwanted text
+      content = content.replace(/^(javascript|typescript|js|ts)\s*$/gm, "");
+
+      // Remove any empty lines that might have been created
+      content = content.replace(/^\s+|\s+$/gm, "");
+
+      // Verify that we have test blocks in the content
+      if (!content.includes("test(")) {
+        console.error("Generated content:", content); // Log the content for debugging
+        throw new Error("Generated content does not include any test blocks");
+      }
+
+      // Add the required imports and config at the top
+      content = `/* eslint-disable testing-library/prefer-screen-queries */
+${allImports.join("\n")}
+
+${content}`;
+
+      return content;
+    } catch (error) {
+      console.error("Error generating test suite:", error);
+      throw error;
     }
   }
 
@@ -543,7 +822,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!tabs || !tabs[0]) {
         throw new Error("Could not find active tab");
       }
-      const currentUrl = tabs[0].url;
+      const currentUrl = new URL(tabs[0].url);
+      // Convert to relative URL by removing protocol, host, and port
+      const relativeUrl =
+        currentUrl.pathname + currentUrl.search + currentUrl.hash;
 
       if (!currentTest) {
         // Generate a contextual filename for the new test
@@ -555,7 +837,7 @@ document.addEventListener("DOMContentLoaded", () => {
           body: outputDiv.textContent,
           filename: filename,
           description: testCaseInput.value,
-          url: currentUrl,
+          url: relativeUrl,
           timestamp: new Date().toISOString(),
         };
         currentSuite.tests.unshift(newTest);
@@ -614,6 +896,9 @@ document.addEventListener("DOMContentLoaded", () => {
     currentScript = "";
     saveBtn.disabled = true;
   }
+
+  // Initialize the configuration modal when the panel loads
+  initializeConfigModal();
 });
 
 async function generateScriptWithAI(testCase, pageDetails, elements) {
@@ -631,13 +916,26 @@ Visible Elements:
 ${JSON.stringify(elements, null, 2)}
 
 Generate a complete Playwright test script in TypeScript that:
-1. Uses proper selectors and assertions
-2. Includes error handling
-3. Follows best practices
-4. Is well-documented
-5. Uses async/await properly
-6. Includes proper TypeScript types
-7. Uses Playwright's built-in types
+1. Uses ONLY valid Playwright selector syntax:
+   - Use page.locator('selector', { hasText: 'text' }) for text matching
+   - Use page.locator('selector', { has: page.locator('nested-selector') }) for nested elements
+   - Use page.locator('selector').first() or .last() for multiple matches
+   - Use page.locator('selector').nth(index) for specific index
+   - Use page.locator('selector').filter({ hasText: 'text' }) for filtering
+   - NEVER use :text() or :has-text() pseudo-selectors
+   - NEVER use deprecated selector syntax
+2. Uses proper selectors and assertions
+3. Includes error handling
+4. Follows best practices
+5. Is well-documented
+6. Uses async/await properly
+7. Includes proper TypeScript types
+8. Uses Playwright's built-in types
+
+Example of valid selector syntax:
+const button = page.locator('button', { hasText: 'Click me' });
+const input = page.locator('input[type="text"]', { has: page.locator('label', { hasText: 'Username' }) });
+const link = page.locator('a').filter({ hasText: 'Learn more' });
 
 Return ONLY the script content, nothing else.`;
 
@@ -655,8 +953,16 @@ Return ONLY the script content, nothing else.`;
           messages: [
             {
               role: "system",
-              content:
-                "You are a Playwright test automation expert specializing in TypeScript. Generate clear, well-structured test scripts that follow best practices and include proper TypeScript types. Return ONLY the script content, without any explanations, comments, or backticks.",
+              content: `You are a Playwright test automation expert specializing in TypeScript. Generate clear, well-structured test scripts that:
+1. Use ONLY valid Playwright selector syntax
+2. Follow best practices for element selection
+3. Include proper TypeScript types
+4. Return ONLY the script content, without any explanations, comments, or backticks
+
+Example of valid selector syntax:
+const button = page.locator('button', { hasText: 'Click me' });
+const input = page.locator('input[type="text"]', { has: page.locator('label', { hasText: 'Username' }) });
+const link = page.locator('a').filter({ hasText: 'Learn more' });`,
             },
             {
               role: "user",
