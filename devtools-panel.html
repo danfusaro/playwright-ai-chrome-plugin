@@ -359,6 +359,72 @@
         color: #333;
         border: 1px solid #ccc;
       }
+
+      .markup-snapshots-container {
+        margin: 15px 0;
+        padding: 10px;
+        background: #f5f5f5;
+        border-radius: 4px;
+      }
+
+      .snapshots-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+
+      .snapshots-header h3 {
+        margin: 0;
+        font-size: 14px;
+        color: #333;
+      }
+
+      .add-snapshot-btn {
+        padding: 4px 8px;
+        font-size: 12px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      .add-snapshot-btn:hover {
+        background-color: #45a049;
+      }
+
+      .snapshots-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .snapshot-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 12px;
+      }
+
+      .snapshot-item .snapshot-label {
+        color: #666;
+      }
+
+      .snapshot-item .remove-snapshot {
+        color: #ff4444;
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 3px;
+      }
+
+      .snapshot-item .remove-snapshot:hover {
+        background-color: #ffebee;
+      }
     </style>
   </head>
   <body>
@@ -368,18 +434,32 @@
       <div class="test-suites-list" id="testSuitesList"></div>
       <button id="newSuiteBtn" class="new-suite-button">New Test Suite</button>
 
-      <div id="testGenerator">
-        <textarea
-          id="testCase"
-          placeholder="Enter your test case here..."
-        ></textarea>
-        <div class="button-group">
-          <button id="generateBtn">Generate Script</button>
-          <button id="saveBtn" disabled>Save Test</button>
+      <div id="testGenerator" style="display: none">
+        <div class="test-input-container">
+          <textarea
+            id="testCase"
+            placeholder="Describe what you want to test..."
+            rows="3"
+          ></textarea>
+          <div class="button-container">
+            <button id="generateBtn">Generate Test</button>
+            <button id="saveBtn" disabled>Save Test</button>
+          </div>
         </div>
-        <div id="loading">Generating script...</div>
-        <div id="error"></div>
-        <div id="output"></div>
+        <div class="markup-snapshots-container">
+          <div class="snapshots-header">
+            <h3>Markup Snapshots</h3>
+            <button id="addSnapshotBtn" class="add-snapshot-btn">
+              Add Snapshot
+            </button>
+          </div>
+          <div id="snapshotsList" class="snapshots-list"></div>
+        </div>
+        <div id="loading" class="loading" style="display: none">
+          Generating test script...
+        </div>
+        <div id="error" class="error" style="display: none"></div>
+        <div id="output" class="output"></div>
       </div>
     </div>
 

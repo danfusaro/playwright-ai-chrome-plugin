@@ -12,6 +12,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const testSuitesList = document.getElementById("testSuitesList");
   const newSuiteBtn = document.getElementById("newSuiteBtn");
   const testGenerator = document.getElementById("testGenerator");
+  const addSnapshotBtn = document.getElementById("addSnapshotBtn");
+  const snapshotsList = document.getElementById("snapshotsList");
 
   if (
     !testCaseInput ||
@@ -22,7 +24,9 @@ document.addEventListener("DOMContentLoaded", () => {
     !outputDiv ||
     !testSuitesList ||
     !newSuiteBtn ||
-    !testGenerator
+    !testGenerator ||
+    !addSnapshotBtn ||
+    !snapshotsList
   ) {
     console.error("Required DOM elements not found:", {
       testCaseInput: !!testCaseInput,
@@ -34,6 +38,8 @@ document.addEventListener("DOMContentLoaded", () => {
       testSuitesList: !!testSuitesList,
       newSuiteBtn: !!newSuiteBtn,
       testGenerator: !!testGenerator,
+      addSnapshotBtn: !!addSnapshotBtn,
+      snapshotsList: !!snapshotsList,
     });
     return;
   }
@@ -46,6 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentSuite = null;
   let configModal = null;
   let currentConfigSuite = null;
+  let currentSnapshots = [];
 
   // Initialize configuration modal
   function initializeConfigModal() {
@@ -476,15 +483,18 @@ document.addEventListener("DOMContentLoaded", () => {
     testCaseInput.value = test.instructions;
     outputDiv.textContent = test.body;
 
+    // Load snapshots
+    currentSnapshots = test.snapshots || [];
+    renderSnapshots();
+
     // Enable the save button for updates
     saveBtn.disabled = false;
 
-    // Update selected state - use suite ID to ensure correct selection
+    // Update selected state
     document.querySelectorAll(".saved-test-item").forEach((item) => {
       item.classList.remove("selected");
     });
 
-    // Find the selected item using the test details ID
     const detailsElement = document.getElementById(
       `testDetails${suite.id}_${index}`
     );
@@ -522,6 +532,10 @@ document.addEventListener("DOMContentLoaded", () => {
     outputDiv.textContent = "";
     saveBtn.disabled = true;
     currentTest = null;
+
+    // Reset snapshots
+    currentSnapshots = [];
+    renderSnapshots();
 
     // Deselect any selected item in the list
     document.querySelectorAll(".saved-test-item").forEach((item) => {
@@ -799,7 +813,8 @@ ${content}`;
       currentScript = await generateScriptWithAI(
         testCase,
         pageDetails,
-        elementsResponse.elements
+        elementsResponse.elements,
+        currentSnapshots
       );
       console.log("Script generated successfully");
       showOutput(currentScript);
@@ -839,12 +854,14 @@ ${content}`;
           description: testCaseInput.value,
           url: relativeUrl,
           timestamp: new Date().toISOString(),
+          snapshots: currentSnapshots,
         };
         currentSuite.tests.unshift(newTest);
       } else {
         // Update existing test
         currentTest.instructions = testCaseInput.value;
         currentTest.body = outputDiv.textContent;
+        currentTest.snapshots = currentSnapshots;
       }
 
       saveTestSuitesToStorage();
@@ -854,6 +871,8 @@ ${content}`;
       testCaseInput.value = "";
       outputDiv.textContent = "";
       currentTest = null;
+      currentSnapshots = [];
+      renderSnapshots();
       saveBtn.textContent = "Save Test";
     } catch (error) {
       console.error("Error saving test:", error);
@@ -899,9 +918,102 @@ ${content}`;
 
   // Initialize the configuration modal when the panel loads
   initializeConfigModal();
+
+  // Add snapshot functionality
+  addSnapshotBtn.addEventListener("click", async () => {
+    try {
+      // Get the current tab's details
+      const tabs = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (!tabs || !tabs[0]) {
+        throw new Error("Could not find active tab");
+      }
+      const tabId = tabs[0].id;
+
+      // Get visible elements through background script
+      const elementsResponse = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          { action: "getVisibleElements", tabId },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              console.error(
+                "Error getting visible elements:",
+                chrome.runtime.lastError
+              );
+              reject(chrome.runtime.lastError);
+            } else {
+              resolve(response);
+            }
+          }
+        );
+      });
+
+      if (!elementsResponse) {
+        throw new Error("Failed to get visible elements");
+      }
+
+      // Create a new snapshot
+      const snapshot = {
+        id: Date.now().toString(),
+        label: `Snapshot ${currentSnapshots.length + 1}`,
+        elements: elementsResponse.elements,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Add to current snapshots
+      currentSnapshots.push(snapshot);
+
+      // Update the UI
+      renderSnapshots();
+
+      // If we have a current test, update it with the new snapshots
+      if (currentTest) {
+        currentTest.snapshots = currentSnapshots;
+        saveTestSuitesToStorage();
+      }
+    } catch (error) {
+      console.error("Error adding snapshot:", error);
+      showError(`Failed to add snapshot: ${error.message}`);
+    }
+  });
+
+  // Render snapshots
+  function renderSnapshots() {
+    snapshotsList.innerHTML = "";
+    currentSnapshots.forEach((snapshot) => {
+      const snapshotElement = document.createElement("div");
+      snapshotElement.className = "snapshot-item";
+      snapshotElement.innerHTML = `
+        <span class="snapshot-label">${snapshot.label}</span>
+        <span class="remove-snapshot" data-id="${snapshot.id}">×</span>
+      `;
+
+      // Add remove handler
+      const removeBtn = snapshotElement.querySelector(".remove-snapshot");
+      removeBtn.addEventListener("click", () => {
+        currentSnapshots = currentSnapshots.filter((s) => s.id !== snapshot.id);
+        renderSnapshots();
+
+        // Update current test if it exists
+        if (currentTest) {
+          currentTest.snapshots = currentSnapshots;
+          saveTestSuitesToStorage();
+        }
+      });
+
+      snapshotsList.appendChild(snapshotElement);
+    });
+  }
 });
 
-async function generateScriptWithAI(testCase, pageDetails, elements) {
+async function generateScriptWithAI(
+  testCase,
+  pageDetails,
+  elements,
+  snapshots = []
+) {
   console.log("Generating script with AI...");
 
   const prompt = `Generate a Playwright test script in TypeScript for the following test case. Return ONLY the script content, without any explanations, comments, or backticks:
@@ -912,12 +1024,27 @@ Page Details:
 URL: ${pageDetails.url}
 Title: ${pageDetails.title}
 
-Visible Elements:
+Current Visible Elements:
 ${JSON.stringify(elements, null, 2)}
+
+${
+  snapshots.length > 0
+    ? `Additional Markup Snapshots:
+${snapshots
+  .map(
+    (snapshot, index) => `
+Snapshot ${index + 1} (${snapshot.label}):
+${JSON.stringify(snapshot.elements, null, 2)}
+`
+  )
+  .join("\n")}`
+    : ""
+}
 
 Generate a complete Playwright test script in TypeScript that:
 1. Uses ONLY selectors that are physically present in the provided HTML elements:
    - ONLY use selectors that match elements in the provided Visible Elements list
+   - ONLY use selectors that match elements in any of the provided Markup Snapshots
    - DO NOT make up or hallucinate selectors that don't exist
    - If an element doesn't have a unique identifier, use the most specific selector available from the provided HTML
 2. Uses ONLY modern Playwright selector syntax:
@@ -983,6 +1110,7 @@ Return ONLY the script content, nothing else.`;
               content: `You are a Playwright test automation expert specializing in TypeScript. Generate clear, well-structured test scripts that:
 1. Use ONLY selectors that are physically present in the provided HTML elements:
    - ONLY use selectors that match elements in the provided Visible Elements list
+   - ONLY use selectors that match elements in any of the provided Markup Snapshots
    - DO NOT make up or hallucinate selectors that don't exist
    - If an element doesn't have a unique identifier, use the most specific selector available from the provided HTML
 2. Use ONLY modern Playwright selector syntax:
