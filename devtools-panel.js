@@ -1,6 +1,184 @@
 import config from "./config.js";
 
+// OpenRouter API configuration
+const OPENROUTER_API_URL = "https://openrouter.ai/api/v1";
+let openRouterSettings = {
+  apiKey: null,
+  model: null,
+  free: false,
+};
+
 document.addEventListener("DOMContentLoaded", () => {
+  // Initialize OpenRouter settings modal
+  const settingsBtn = document.getElementById("settingsBtn");
+  const openRouterModal = document.getElementById("openRouterModal");
+  const openRouterCloseBtn = openRouterModal.querySelector(".modal-close");
+  const openRouterCancelBtn = openRouterModal.querySelector(".cancel-btn");
+  const openRouterSaveBtn = openRouterModal.querySelector(".save-btn");
+  const openRouterApiKeyInput = document.getElementById("openRouterApiKey");
+  const openRouterModelSelect = document.getElementById("openRouterModel");
+  const openRouterStatus = document.getElementById("openRouterStatus");
+  const openRouterFree = document.getElementById("openRouterFree");
+
+  let models;
+
+  chrome.storage.onChanged.addListener(async (changes, areaName) => {
+    if (areaName === "sync" && changes.openRouterSettings) {
+      console.log(
+        "OpenRouter settings changed:",
+        changes.openRouterSettings.newValue
+      );
+      openRouterSettings = changes.openRouterSettings.newValue;
+      // Perform actions based on the updated settings
+      models = await validateAndFetchModels(openRouterSettings.apiKey);
+      updateOpenRouterUI(models, openRouterSettings.free);
+    }
+  });
+
+  // Load OpenRouter settings from storage
+  chrome.storage.sync.get(["openRouterSettings"], async (result) => {
+    if (result.openRouterSettings) {
+      openRouterSettings = result.openRouterSettings;
+      models = await validateAndFetchModels(openRouterSettings.apiKey);
+      updateOpenRouterUI(models, openRouterSettings.free);
+      openRouterFree.checked = openRouterSettings.free;
+    }
+  });
+
+  // Show settings modal
+  settingsBtn.addEventListener("click", async () => {
+    openRouterModal.style.display = "block";
+    // openRouterSettings = result.openRouterSettings;
+    // const models = await validateAndFetchModels(openRouterSettings.apiKey);
+    // updateOpenRouterUI(models, openRouterSettings.free);
+  });
+
+  openRouterFree.addEventListener("change", async () => {
+    await chrome.storage.sync.set({
+      openRouterSettings: {
+        ...openRouterSettings,
+        free: openRouterFree.checked,
+      },
+    });
+    // updateOpenRouterUI(models, openRouterFree.checked);
+  });
+
+  // Close settings modal
+  openRouterCloseBtn.addEventListener("click", closeOpenRouterModal);
+  openRouterCancelBtn.addEventListener("click", closeOpenRouterModal);
+  openRouterModal.addEventListener("click", (e) => {
+    if (e.target === openRouterModal) {
+      closeOpenRouterModal();
+    }
+  });
+
+  // Save OpenRouter settings
+  openRouterSaveBtn.addEventListener("click", async () => {
+    const apiKey = openRouterApiKeyInput.value.trim();
+    const model = openRouterModelSelect.value;
+
+    if (!apiKey) {
+      openRouterStatus.textContent = "Please enter an API key";
+      openRouterStatus.style.color = "red";
+      return;
+    }
+
+    try {
+      openRouterStatus.textContent = "Validating API key...";
+      openRouterStatus.style.color = "black";
+
+      const models = await validateAndFetchModels(apiKey);
+      openRouterSettings = {
+        apiKey,
+        model,
+        free: openRouterSettings.checked,
+      };
+
+      // Save to Chrome storage
+      await chrome.storage.sync.set({ openRouterSettings });
+
+      updateOpenRouterUI(models, openRouterFree.checked);
+
+      openRouterStatus.textContent = "Settings saved successfully";
+      openRouterStatus.style.color = "green";
+    } catch (error) {
+      console.error("Error saving OpenRouter settings:", error);
+      openRouterStatus.textContent = `Error: ${error.message}`;
+      openRouterStatus.style.color = "red";
+    }
+  });
+
+  // Update OpenRouter UI
+  function updateOpenRouterUI(models, isFree) {
+    openRouterApiKeyInput.value = openRouterSettings.apiKey || "";
+    openRouterModelSelect.options.length = 0;
+
+    if (!openRouterSettings.model) {
+      // Populate model select
+      openRouterModelSelect.innerHTML =
+        '<option value="">Select a model</option>';
+    }
+
+    if (models?.length > 0) {
+      openRouterModelSelect.disabled = false;
+      models
+        ?.filter((x) => {
+          return isFree
+            ? x.name?.match(/free/i)?.index > -1 ||
+                x.id.match(/free/i)?.index > -1
+            : true;
+        })
+        .forEach((model) => {
+          const option = document.createElement("option");
+          option.value = model.id;
+          option.text = `${model.name} (${model.id})`;
+          option.selected = model.id === openRouterSettings.model;
+          openRouterModelSelect.appendChild(option);
+        });
+    }
+
+    // Update status
+    if (openRouterSettings.apiKey && openRouterSettings.model) {
+      openRouterStatus.textContent = "OpenRouter configured";
+      openRouterStatus.style.color = "green";
+    } else {
+      openRouterStatus.textContent = "OpenRouter not configured";
+      openRouterStatus.style.color = "red";
+    }
+  }
+
+  // Close OpenRouter modal
+  function closeOpenRouterModal() {
+    openRouterModal.style.display = "none";
+  }
+
+  // Validate API key and fetch available models
+  async function validateAndFetchModels(apiKey) {
+    try {
+      // Test API key
+      const testResponse = await fetch(`${OPENROUTER_API_URL}/auth/key`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      if (!testResponse.ok) {
+        throw new Error("Invalid API key");
+      }
+
+      // Fetch available models
+      const modelsResponse = await fetch(`${OPENROUTER_API_URL}/models`);
+      if (!modelsResponse.ok) {
+        throw new Error("Failed to fetch models");
+      }
+
+      const modelsData = await modelsResponse.json();
+      return modelsData.data || [];
+    } catch (error) {
+      console.error("OpenRouter validation error:", error);
+      throw error;
+    }
+  }
   console.log("DevTools panel loaded");
 
   const testCaseInput = document.getElementById("testCase");
@@ -638,7 +816,7 @@ Requirements:
 1. Follow the template structure exactly
 2. Include proper line breaks and indentation
 3. Convert ALL provided test cases into proper test blocks
-4. Use proper Playwright selectors and assertions
+4. Use proper Playwright selectors and assertions, favor getByRole, getBy
 5. Follow best practices for test organization
 6. MUST include every test case provided in the input
 7. Each test case should be a separate test block
@@ -1008,15 +1186,82 @@ ${content}`;
   }
 });
 
+async function callOpenRouterAI(context) {
+  const prompt = `You are a Playwright test automation expert. Given the following context:
+URL: ${context.url}
+Page Title: ${context.title}
+
+Available Elements:
+${context.elements.map((el) => `- ${el.text} (${el.selector})`).join("\n")}
+
+Test Cases:
+${context.testCases.map((tc, i) => `${i + 1}. ${tc}`).join("\n")}
+
+For each test case, determine:
+1. The action to perform (click, fill, type, select, press, waitForNavigation, etc.)
+2. The target element (matching from available elements)
+3. Any values to input (for fill/type/select actions)
+
+Format your response as a JSON array of objects with these properties:
+- originalTestCase: the original test case text
+- action: the Playwright action to perform
+- elementText: text to match the element
+- value: any value to input (if applicable)`;
+
+  const response = await fetch(`${OPENROUTER_API_URL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${openRouterSettings.apiKey}`,
+      "HTTP-Referer": "https://your-extension-url.com",
+      "X-Title": "Playwright AI Script Generator",
+    },
+    body: JSON.stringify({
+      model: openRouterSettings.model,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a Playwright test automation expert. Generate precise commands based on test cases. Respond with ONLY the JSON array, no markdown formatting or code blocks.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 1000,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(
+      `OpenRouter API error: ${errorData.error?.message || response.statusText}`
+    );
+  }
+
+  const data = await response.json();
+  const content = data.choices[0].message.content;
+
+  try {
+    return JSON.parse(content);
+  } catch (error) {
+    console.error("Failed to parse AI response:", content);
+    throw new Error("Failed to parse AI response as JSON");
+  }
+}
+
 async function generateScriptWithAI(
   testCase,
   pageDetails,
   elements,
-  snapshots = []
+  snapshots = [],
+  useBackupAi
 ) {
   console.log("Generating script with AI...");
 
-  const prompt = `Generate a Playwright test script in TypeScript for the following test case. Return ONLY the script content, without any explanations, comments, or backticks:
+  const userPrompt = `Generate a Playwright test script in TypeScript for the following test case. Return ONLY the script content, without any explanations, comments, or backticks:
 
 Test Case: ${testCase}
 
@@ -1047,67 +1292,72 @@ Generate a complete Playwright test script in TypeScript that:
    - ONLY use selectors that match elements in any of the provided Markup Snapshots
    - DO NOT make up or hallucinate selectors that don't exist
    - If an element doesn't have a unique identifier, use the most specific selector available from the provided HTML
-2. Uses ONLY modern Playwright selector syntax:
-   - VALID: page.locator('button', { hasText: 'Click me' })
-   - VALID: page.locator('input[type="text"]', { has: page.locator('label', { hasText: 'Username' }) })
-   - VALID: page.locator('button').filter({ hasText: 'Submit' })
-   - VALID: page.locator('a').first()
-   - VALID: page.locator('div').nth(1)
-   - INVALID: page.locator('button:text("Click me")')
-   - INVALID: page.locator('button:has-text("Click me")')
-   - INVALID: page.locator('button >> text=Click me')
-   - INVALID: page.locator('button:has(span)')
+2. Uses ONLY modern Playwright selector syntax.  Ensure selectors work across multiple environments, considering CMS 
+text changes, dynamic class names, and UI variations.  When generating Playwright test selectors, prioritize:
+	a.	Use data-testid or data-test attributes if available.
+	b.	Use getByRole() for accessibility-based selection.
+	c.	Use parent-child relationships for stable structure-based selection.
+	d.	Use IDs only if they are stable.
+	e.	Use text-based locators sparingly and make them case-insensitive if necessary.
+	f.	Avoid using CSS class selectors unless they are explicitly stable and version-controlled.
+	g.	Avoid nth-child selectors as they may change with content updates.
+
 3. Uses proper selectors and assertions
 4. Includes error handling
 5. Follows best practices
 6. Is well-documented
 7. Uses async/await properly
 8. Includes proper TypeScript types
-9. Uses Playwright's built-in types
-10. NEVER include { page } in test function declarations:
-    - INCORRECT: test('should do something', async ({ page }) => { ... })
-    - CORRECT: test('should do something', async () => { ... })
+9. Uses Playwright's built-in types where needed
 
 Example of correct function declaration:
-test('should do something', async () => {
+test('should do something', async ({ page }) => {
   // test code here
 });
 
-Example of valid selector syntax:
-// Using HTML attributes
-const submitButton = page.locator('button[type="submit"]');
-const searchInput = page.locator('input[name="search"]');
+// -------------------------
+// Example 2a: Selecting Elements by Stable Attributes
+// -------------------------
+const submitButton = page.locator('[data-testid="submit-button"]');
+const searchInput = page.locator('[data-testid="search-input"]');
 const form = page.locator('form[data-testid="search-form"]');
+const carouselItem = page.locator('form[data-analytics-id="search-form"]');
 
-// Using text content
-const button = page.locator('button', { hasText: 'Submit' });
-const link = page.locator('a').filter({ hasText: 'Learn more' });
+// -------------------------
+// Example 2b: Using ARIA Roles for Accessibility
+// -------------------------
+const submitButton = page.getByRole('button', { name: /submit/i }); // Case insensitive
+const searchField = page.getByRole('textbox', { name: 'Search' });
 
-// Using nested elements
-const input = page.locator('input[type="text"]', { has: page.locator('label', { hasText: 'Username' }) });
+// -------------------------
+// Example 2c: Using Parent-Child Relationships
+// -------------------------
+const usernameInput = page.locator('label:has-text("Username") + input');
+const modalButton = page.locator('div.modal-content button', { hasText: 'Confirm' });
 
-// Using multiple matches
+// -------------------------
+// Example 2d: Using Text-Based Locators (Only If Necessary)
+// -------------------------
+const button = page.locator('button', { hasText: /submit/i }); // Case insensitive match
+const link = page.locator('a').filter({ hasText: /learn more/i });
+
+// -------------------------
+// Example 2e: Using Nested Elements for Contextual Selection
+// -------------------------
+const usernameInput = page.locator('input[type="text"]', { 
+    has: page.locator('label', { hasText: 'Username' }) 
+});
+
+// -------------------------
+// Example 2f: Handling Multiple Matches
+// -------------------------
 const firstButton = page.locator('button').first();
 const lastButton = page.locator('button').last();
-const secondButton = page.locator('button').nth(1);
+const secondButton = page.locator('button').nth(1); // 0-based index
 
 Return ONLY the script content, nothing else.`;
 
-  try {
-    console.log("Making API request to Azure OpenAI...");
-    const response = await fetch(
-      `https://${config.azure.endpoint}.openai.azure.com/openai/deployments/${config.azure.deployment}/chat/completions?api-version=${config.azure.apiVersion}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "api-key": config.azure.apiKey,
-        },
-        body: JSON.stringify({
-          messages: [
-            {
-              role: "system",
-              content: `You are a Playwright test automation expert specializing in TypeScript. Generate clear, well-structured test scripts that:
+  const systemPrompt = `You are a Playwright test automation expert specializing in TypeScript. Generate clear, well-structured test scripts that:
 1. Use ONLY selectors that are physically present in the provided HTML elements:
    - ONLY use selectors that match elements in the provided Visible Elements list
    - ONLY use selectors that match elements in any of the provided Markup Snapshots
@@ -1151,18 +1401,49 @@ const input = page.locator('input[type="text"]', { has: page.locator('label', { 
 // Using multiple matches
 const firstButton = page.locator('button').first();
 const lastButton = page.locator('button').last();
-const secondButton = page.locator('button').nth(1);`,
-            },
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-          temperature: 0.7,
-          max_tokens: 2000,
-        }),
-      }
-    );
+const secondButton = page.locator('button').nth(1);`;
+
+  let url;
+  let headers;
+
+  try {
+    console.log("Making API request to configured LLM");
+    if (openRouterSettings.apiKey && openRouterSettings.model) {
+      // Use OpenRouter
+      // aiResponse = await callOpenRouterAI({ url, title, elements, testCases });
+      url = `${OPENROUTER_API_URL}/chat/completions`;
+      headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openRouterSettings.apiKey}`,
+        "X-Title": "Playwright AI Script Generator",
+      };
+    } else {
+      url = `https://${config.azure.endpoint}.openai.azure.com/openai/deployments/${config.azure.deployment}/chat/completions?api-version=${config.azure.apiVersion}`;
+      headers = {
+        "Content-Type": "application/json",
+        "api-key": config.azure.apiKey,
+      };
+    }
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: openRouterSettings.model,
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt,
+          },
+          {
+            role: "user",
+            content: userPrompt,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+      }),
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -1176,7 +1457,9 @@ const secondButton = page.locator('button').nth(1);`,
     console.log("AI response received:", data);
 
     if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-      throw new Error("Invalid response format from AI");
+      throw new Error(
+        data?.error?.message ?? "Invalid response format from AI"
+      );
     }
 
     // Clean up the response by removing any backticks and extra whitespace
@@ -1205,11 +1488,9 @@ const secondButton = page.locator('button').nth(1);`,
   } catch (error) {
     console.error("Error in generateScriptWithAI:", error);
 
-    // Check if the error is due to extension context invalidation
+    // Handle extension context invalidation
     if (error.message.includes("Extension context invalidated")) {
-      // Try to reload the panel
       try {
-        // Attempt to reload the current panel
         const tabs = await chrome.tabs.query({
           active: true,
           currentWindow: true,
@@ -1220,8 +1501,6 @@ const secondButton = page.locator('button').nth(1);`,
       } catch (reloadErr) {
         console.error("Failed to reload panel:", reloadErr);
       }
-
-      // Show a user-friendly error message
       throw new Error(
         "The extension needs to be reloaded. Please close and reopen the DevTools panel."
       );
@@ -1229,57 +1508,57 @@ const secondButton = page.locator('button').nth(1);`,
 
     throw error;
   }
-}
 
-async function generateFilename(testCase) {
-  try {
-    const response = await fetch(
-      `https://${config.azure.endpoint}.openai.azure.com/openai/deployments/${config.azure.deployment}/chat/completions?api-version=${config.azure.apiVersion}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "api-key": config.azure.apiKey,
-        },
-        body: JSON.stringify({
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are a helpful assistant that generates appropriate filenames for Playwright test scripts. Return ONLY the filename with .ts extension, nothing else. The filename should be kebab-case and descriptive of the test case.",
-            },
-            {
-              role: "user",
-              content: `Generate a filename for this test case: ${testCase}`,
-            },
-          ],
-          temperature: 0.7,
-          max_tokens: 50,
-        }),
+  async function generateFilename(testCase) {
+    try {
+      const response = await fetch(
+        `https://${config.azure.endpoint}.openai.azure.com/openai/deployments/${config.azure.deployment}/chat/completions?api-version=${config.azure.apiVersion}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "api-key": config.azure.apiKey,
+          },
+          body: JSON.stringify({
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are a helpful assistant that generates appropriate filenames for Playwright test scripts. Return ONLY the filename with .ts extension, nothing else. The filename should be kebab-case and descriptive of the test case.",
+              },
+              {
+                role: "user",
+                content: `Generate a filename for this test case: ${testCase}`,
+              },
+            ],
+            temperature: 0.7,
+            max_tokens: 50,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
       }
-    );
 
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.status}`);
+      const data = await response.json();
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error("Invalid response format from AI");
+      }
+
+      let filename = data.choices[0].message.content.trim();
+      // Remove any existing extension
+      filename = filename.replace(/\.[^.]+$/, "");
+      // Add .ts extension
+      filename = filename + ".ts";
+      // Clean up the filename to ensure it's valid
+      filename = filename.replace(/[^a-z0-9-_.]/gi, "-").toLowerCase();
+      return filename;
+    } catch (error) {
+      console.error("Error generating filename:", error);
+      // Fallback to a simple filename if AI generation fails
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      return `playwright-test-${timestamp}.ts`;
     }
-
-    const data = await response.json();
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-      throw new Error("Invalid response format from AI");
-    }
-
-    let filename = data.choices[0].message.content.trim();
-    // Remove any existing extension
-    filename = filename.replace(/\.[^.]+$/, "");
-    // Add .ts extension
-    filename = filename + ".ts";
-    // Clean up the filename to ensure it's valid
-    filename = filename.replace(/[^a-z0-9-_.]/gi, "-").toLowerCase();
-    return filename;
-  } catch (error) {
-    console.error("Error generating filename:", error);
-    // Fallback to a simple filename if AI generation fails
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    return `playwright-test-${timestamp}.ts`;
   }
 }

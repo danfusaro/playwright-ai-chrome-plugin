@@ -4,7 +4,11 @@
   "version": "1.0",
   "description": "Generate Playwright scripts using AI",
   "permissions": ["scripting", "activeTab", "storage", "tabs", "downloads"],
-  "host_permissions": ["<all_urls>", "*://*.openai.azure.com/*"],
+  "host_permissions": [
+    "<all_urls>",
+    "*://*.openai.azure.com/*",
+    "*://*.openrouter.ai/*"
+  ],
   "action": {
     "default_icon": {
       "16": "icon.png",
@@ -37,7 +41,7 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.openai.azure.com/"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.openai.azure.com/ https://*.openrouter.ai/ https://openrouter.ai/"
   },
   "devtools_page": "devtools.html"
 }

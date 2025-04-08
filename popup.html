@@ -38,7 +38,8 @@
         text-align: center;
         margin: 10px 0;
       }
-      .error {
+      .error,
+      .status {
         color: red;
         margin: 10px 0;
       }
@@ -46,6 +47,23 @@
   </head>
   <body>
     <h1>Generate Playwright Script</h1>
+    <div class="settings">
+      <h2>OpenRouter Settings</h2>
+      <div id="settingsForm">
+        <label for="apiKey">API Key:</label>
+        <input
+          type="text"
+          id="apiKey"
+          placeholder="Enter your OpenRouter API key"
+        />
+        <label for="modelSelect">Model:</label>
+        <select id="modelSelect" disabled>
+          <option value="">Select a model</option>
+        </select>
+        <button id="saveSettings">Save & Validate</button>
+        <div id="settingsStatus" class="status"></div>
+      </div>
+    </div>
     <textarea id="testCases" placeholder="Enter test cases here..."></textarea>
     <button id="generate">Generate Script</button>
     <div id="loading" class="loading">

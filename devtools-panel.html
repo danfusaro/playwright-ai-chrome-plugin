@@ -3,6 +3,59 @@
   <head>
     <title>Playwright Script Generator</title>
     <style>
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+      }
+
+      .settings-btn {
+        background: none;
+        border: none;
+        padding: 5px;
+        cursor: pointer;
+        color: #666;
+      }
+
+      .settings-btn:hover {
+        color: #333;
+      }
+
+      .settings-btn svg {
+        width: 24px;
+        height: 24px;
+      }
+
+      .settings-form {
+        padding: 10px 0;
+      }
+
+      .form-group {
+        margin-bottom: 15px;
+      }
+
+      .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+      }
+
+      .form-group input,
+      .form-group select {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+
+      .status {
+        padding: 8px;
+        border-radius: 4px;
+        margin-top: 10px;
+        text-align: center;
+      }
+
       body {
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
           Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -429,7 +482,28 @@
   </head>
   <body>
     <div class="container">
-      <h1>Playwright Script Generator</h1>
+      <div class="header">
+        <h1>Playwright Script Generator</h1>
+        <button id="settingsBtn" class="settings-btn">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="feather feather-settings"
+          >
+            <circle cx="12" cy="12" r="3"></circle>
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+            ></path>
+          </svg>
+        </button>
+      </div>
 
       <div class="test-suites-list" id="testSuitesList"></div>
       <button id="newSuiteBtn" class="new-suite-button">New Test Suite</button>
@@ -460,6 +534,45 @@
         </div>
         <div id="error" class="error" style="display: none"></div>
         <div id="output" class="output"></div>
+      </div>
+    </div>
+
+    <!-- Add OpenRouter settings modal -->
+    <div id="openRouterModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <span class="modal-title">OpenRouter Configuration</span>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="settings-form">
+          <div class="form-group">
+            <label for="openRouterApiKey">API Key:</label>
+            <input
+              type="text"
+              id="openRouterApiKey"
+              placeholder="Enter your OpenRouter API key"
+            />
+          </div>
+          <div class="form-group">
+            <label for="openRouterModel">Model:</label>
+            <select id="openRouterModel" disabled>
+              <option value="">Select a model</option>
+            </select>
+          </div>
+          <div>
+            <label for="openRouterFree">
+              <input type="checkbox" id="openRouterFree" />
+              Free models only
+            </label>
+          </div>
+          <div class="form-group">
+            <div id="openRouterStatus" class="status"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="cancel-btn">Cancel</button>
+          <button class="save-btn">Save Settings</button>
+        </div>
       </div>
     </div>
 
