@@ -1,4 +1,5 @@
 import config from "./config.js";
+import { makeLLMRequest } from "./utils.js";
 
 // OpenRouter API configuration
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1";
@@ -785,19 +786,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ...childImports,
       ].filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
 
-      const response = await fetch(
-        `https://${config.azure.endpoint}.openai.azure.com/openai/deployments/${config.azure.deployment}/chat/completions?api-version=${config.azure.apiVersion}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "api-key": config.azure.apiKey,
-          },
-          body: JSON.stringify({
-            messages: [
-              {
-                role: "system",
-                content: `You are a Playwright test automation expert. Create a test suite file that follows this exact template:
+      const systemPrompt = `You are a Playwright test automation expert. Create a test suite file that follows this exact template:
 
 ${allImports.join("\n")}
 
@@ -826,11 +815,9 @@ Requirements:
 11. Use relative URLs for navigation - do not include protocol, host, or port
 12. Each test should navigate to its specific relative URL before running
 
-Return ONLY the test suite content, nothing else.`,
-              },
-              {
-                role: "user",
-                content: `Create a test suite file for the following tests:
+Return ONLY the test suite content, nothing else.`;
+
+      const userPrompt = `Create a test suite file for the following tests:
 
 Suite Name: ${suite.name}
 
@@ -853,18 +840,14 @@ ${suite.tests
   .map((test, index) => `\nTest ${index + 1}:\n${test.body}`)
   .join("\n")}
 
-IMPORTANT: Include ALL test cases in the output, converting each one into a proper test block.`,
-              },
-            ],
-            temperature: 0.7,
-            max_tokens: 2000,
-          }),
-        }
-      );
+IMPORTANT: Include ALL test cases in the output, converting each one into a proper test block.`;
 
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
-      }
+      const response = await makeLLMRequest({
+        systemPrompt,
+        userPrompt,
+        openRouterSettings,
+        config,
+      });
 
       const data = await response.json();
       if (!data.choices || !data.choices[0] || !data.choices[0].message) {
@@ -1186,69 +1169,34 @@ ${content}`;
   }
 });
 
-async function callOpenRouterAI(context) {
-  const prompt = `You are a Playwright test automation expert. Given the following context:
-URL: ${context.url}
-Page Title: ${context.title}
-
-Available Elements:
-${context.elements.map((el) => `- ${el.text} (${el.selector})`).join("\n")}
-
-Test Cases:
-${context.testCases.map((tc, i) => `${i + 1}. ${tc}`).join("\n")}
-
-For each test case, determine:
-1. The action to perform (click, fill, type, select, press, waitForNavigation, etc.)
-2. The target element (matching from available elements)
-3. Any values to input (for fill/type/select actions)
-
-Format your response as a JSON array of objects with these properties:
-- originalTestCase: the original test case text
-- action: the Playwright action to perform
-- elementText: text to match the element
-- value: any value to input (if applicable)`;
-
-  const response = await fetch(`${OPENROUTER_API_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openRouterSettings.apiKey}`,
-      "HTTP-Referer": "https://your-extension-url.com",
-      "X-Title": "Playwright AI Script Generator",
-    },
-    body: JSON.stringify({
-      model: openRouterSettings.model,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a Playwright test automation expert. Generate precise commands based on test cases. Respond with ONLY the JSON array, no markdown formatting or code blocks.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      temperature: 0.7,
-      max_tokens: 1000,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(
-      `OpenRouter API error: ${errorData.error?.message || response.statusText}`
-    );
-  }
-
-  const data = await response.json();
-  const content = data.choices[0].message.content;
-
+async function generateFilename(testCase) {
   try {
-    return JSON.parse(content);
+    const response = await makeLLMRequest({
+      systemPrompt:
+        "You are a helpful assistant that generates appropriate filenames for Playwright test scripts. Return ONLY the filename with .ts extension, nothing else. The filename should be kebab-case and descriptive of the test case.",
+      userPrompt: `Generate a filename for this test case: ${testCase}`,
+      openRouterSettings,
+      config,
+    });
+
+    const data = await response.json();
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error("Invalid response format from AI");
+    }
+
+    let filename = data.choices[0].message.content.trim();
+    // Remove any existing extension
+    filename = filename.replace(/\.[^.]+$/, "");
+    // Add .ts extension
+    filename = filename + ".ts";
+    // Clean up the filename to ensure it's valid
+    filename = filename.replace(/[^a-z0-9-_.]/gi, "-").toLowerCase();
+    return filename;
   } catch (error) {
-    console.error("Failed to parse AI response:", content);
-    throw new Error("Failed to parse AI response as JSON");
+    console.error("Error generating filename:", error);
+    // Fallback to a simple filename if AI generation fails
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    return `playwright-test-${timestamp}.ts`;
   }
 }
 
@@ -1256,8 +1204,7 @@ async function generateScriptWithAI(
   testCase,
   pageDetails,
   elements,
-  snapshots = [],
-  useBackupAi
+  snapshots = []
 ) {
   console.log("Generating script with AI...");
 
@@ -1403,46 +1350,14 @@ const firstButton = page.locator('button').first();
 const lastButton = page.locator('button').last();
 const secondButton = page.locator('button').nth(1);`;
 
-  let url;
-  let headers;
-
   try {
     console.log("Making API request to configured LLM");
-    if (openRouterSettings.apiKey && openRouterSettings.model) {
-      // Use OpenRouter
-      // aiResponse = await callOpenRouterAI({ url, title, elements, testCases });
-      url = `${OPENROUTER_API_URL}/chat/completions`;
-      headers = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openRouterSettings.apiKey}`,
-        "X-Title": "Playwright AI Script Generator",
-      };
-    } else {
-      url = `https://${config.azure.endpoint}.openai.azure.com/openai/deployments/${config.azure.deployment}/chat/completions?api-version=${config.azure.apiVersion}`;
-      headers = {
-        "Content-Type": "application/json",
-        "api-key": config.azure.apiKey,
-      };
-    }
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: openRouterSettings.model,
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt,
-          },
-          {
-            role: "user",
-            content: userPrompt,
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: 2000,
-      }),
+    const response = await makeLLMRequest({
+      systemPrompt,
+      userPrompt,
+      openRouterSettings,
+      config,
     });
 
     if (!response.ok) {
@@ -1507,58 +1422,5 @@ const secondButton = page.locator('button').nth(1);`;
     }
 
     throw error;
-  }
-
-  async function generateFilename(testCase) {
-    try {
-      const response = await fetch(
-        `https://${config.azure.endpoint}.openai.azure.com/openai/deployments/${config.azure.deployment}/chat/completions?api-version=${config.azure.apiVersion}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "api-key": config.azure.apiKey,
-          },
-          body: JSON.stringify({
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are a helpful assistant that generates appropriate filenames for Playwright test scripts. Return ONLY the filename with .ts extension, nothing else. The filename should be kebab-case and descriptive of the test case.",
-              },
-              {
-                role: "user",
-                content: `Generate a filename for this test case: ${testCase}`,
-              },
-            ],
-            temperature: 0.7,
-            max_tokens: 50,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error("Invalid response format from AI");
-      }
-
-      let filename = data.choices[0].message.content.trim();
-      // Remove any existing extension
-      filename = filename.replace(/\.[^.]+$/, "");
-      // Add .ts extension
-      filename = filename + ".ts";
-      // Clean up the filename to ensure it's valid
-      filename = filename.replace(/[^a-z0-9-_.]/gi, "-").toLowerCase();
-      return filename;
-    } catch (error) {
-      console.error("Error generating filename:", error);
-      // Fallback to a simple filename if AI generation fails
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      return `playwright-test-${timestamp}.ts`;
-    }
   }
 }
